@@ -11,6 +11,7 @@ from app.domain.generation.answer_engine import answer_with_rag
 from app.domain.learning.course_builder import CourseBuilder
 from app.infrastructure.vectorstore.manager import VectorStoreManager
 from app.domain.retrieval.hybrid_search import HybridRetriever
+from app.domain.agents.orchestrator import AgenticOrchestrator
 import traceback
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -102,67 +103,67 @@ async def send_message(
         for msg in history_messages[-8:]
     ])
 
-        # FIX 5: Use AgenticOrchestrator instead of direct answer_with_rag
-        try:
-            manager = VectorStoreManager(user_id=current_user.id)
-            orchestrator = AgenticOrchestrator(manager)
+    # FIX 5: Use AgenticOrchestrator instead of direct answer_with_rag
+    try:
+        manager = VectorStoreManager(user_id=current_user.id)
+        orchestrator = AgenticOrchestrator(manager)
 
-            enriched_question = request.question
-            if history_context:
-                enriched_question = (
-                    "Consider the following conversation history when answering the current question.\n\n"
-                    f"History:\n{history_context}\n\n"
-                    f"Current Question: {request.question}"
-                )
-
-            # Check documents count for initial status
-            user_documents = db.query(Document).filter(Document.user_id == current_user.id).all()
-            
-            # Execute Agentic RAG
-            result = await orchestrator.run(
-                question=enriched_question,
-                topic_title=request.topic or "General"
+        enriched_question = request.question
+        if history_context:
+            enriched_question = (
+                "Consider the following conversation history when answering the current question.\n\n"
+                f"History:\n{history_context}\n\n"
+                f"Current Question: {request.question}"
             )
 
-            # Process the agentic result
-            answer = result.get("answer", "I couldn't generate a proper response.")
-            key_points = result.get("key_points", [])
-            citations = result.get("citations", [])
-            confidence_rate = result.get("confidence", 0.5)
-            confidence_label = "High" if confidence_rate >= 0.75 else ("Medium" if confidence_rate >= 0.5 else "Low")
-            
-            # Determine source footer for v3.0 explainability
-            unique_sources = set([c.get("source", "Unknown") for c in citations])
-            source_footer = f"Retrieved documents: {', '.join(list(unique_sources))}" if unique_sources else "General Knowledge"
-            
-            # Append v3.0 metadata headers to the final answer string
-            final_answer_text = f"{answer}\n\n[Source]\n- {source_footer}\n\n[Confidence]\n{confidence_label}"
+        # Check documents count for initial status
+        user_documents = db.query(Document).filter(Document.user_id == current_user.id).all()
+        
+        # Execute Agentic RAG
+        result = await orchestrator.run(
+            question=enriched_question,
+            topic_title=request.topic or "General"
+        )
 
-            chat_response = ChatResponse(
-                conversation_id=conversation.id,
-                message_id=user_message.id + 1,
-                answer=final_answer_text,
-                key_points=key_points,
-                citations=citations,
-                confidence=confidence_rate,
-                confidence_label=confidence_label,
-                source_type=source_footer
-            )
+        # Process the agentic result
+        answer = result.get("answer", "I couldn't generate a proper response.")
+        key_points = result.get("key_points", [])
+        citations = result.get("citations", [])
+        confidence_rate = result.get("confidence", 0.5)
+        confidence_label = "High" if confidence_rate >= 0.75 else ("Medium" if confidence_rate >= 0.5 else "Low")
+        
+        # Determine source footer for v3.0 explainability
+        unique_sources = set([c.get("source", "Unknown") for c in citations])
+        source_footer = f"Retrieved documents: {', '.join(list(unique_sources))}" if unique_sources else "General Knowledge"
+        
+        # Append v3.0 metadata headers to the final answer string
+        final_answer_text = f"{answer}\n\n[Source]\n- {source_footer}\n\n[Confidence]\n{confidence_label}"
 
-            # Store assistant message in DB
-            bot_message = Message(
-                conversation_id=conversation.id,
-                role="assistant",
-                content=final_answer_text,
-                citations=json.dumps(citations),
-                confidence=confidence_label
-            )
-            db.add(bot_message)
-            db.commit()
+        chat_response = ChatResponse(
+            conversation_id=conversation.id,
+            message_id=user_message.id + 1,
+            answer=final_answer_text,
+            key_points=key_points,
+            citations=citations,
+            confidence=confidence_rate,
+            confidence_label=confidence_label,
+            source_type=source_footer
+        )
 
-            return chat_response
+        # Store assistant message in DB
+        bot_message = Message(
+            conversation_id=conversation.id,
+            role="assistant",
+            content=final_answer_text,
+            citations=json.dumps(citations),
+            confidence=confidence_label
+        )
+        db.add(bot_message)
+        db.commit()
 
-        except Exception as e:
+        return chat_response
+
+    except Exception as e:
         # Log full traceback and return structured error to frontend
         tb = traceback.format_exc()
         logger.error(f"Chat generation failed: {e}\n{tb}")
@@ -170,30 +171,6 @@ async def send_message(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Chat generation failed: {str(e)}"
         )
-
-    # Store assistant response
-    assistant_message = Message(
-        conversation_id=conversation.id,
-        role="assistant",
-        content=answer,
-        citations=json.dumps(citations),
-        key_points=json.dumps(key_points),
-        confidence=str(confidence)
-    )
-    db.add(assistant_message)
-    db.commit()
-    db.refresh(assistant_message)
-    
-    logger.info(f"Message sent in conversation {conversation.id} by user {current_user.id}")
-    
-    return ChatResponse(
-        conversation_id=conversation.id,
-        message_id=assistant_message.id,
-        answer=answer,
-        key_points=key_points,
-        citations=citations,
-        confidence=confidence
-    )
 
 
 @router.get("/debug/retrieval")
