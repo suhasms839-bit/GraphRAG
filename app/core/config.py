@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     # Retrieval thresholds
     STRONG_CONTEXT_THRESHOLD: float = float(os.getenv("STRONG_CONTEXT_THRESHOLD", "0.7"))
     WEAK_CONTEXT_THRESHOLD: float = float(os.getenv("WEAK_CONTEXT_THRESHOLD", "0.4"))
+    # Graph seed scoring
+    SEED_SCORE_THRESHOLD: float = float(os.getenv("SEED_SCORE_THRESHOLD", "0.6"))
     
     # Neo4j
     NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
@@ -29,6 +31,9 @@ class Settings(BaseSettings):
     NEO4J_DATABASE: str = os.getenv("NEO4J_DATABASE", "")
     # Wait before first Neo4j connection attempt (seconds)
     AURA_WAIT_SECONDS: int = int(os.getenv("AURA_WAIT_SECONDS", "60"))
+    # Graph path traversal limits
+    MAX_GRAPH_PATH_DEPTH: int = int(os.getenv("MAX_GRAPH_PATH_DEPTH", "2"))
+    MAX_GRAPH_PATHS_PER_SEED: int = int(os.getenv("MAX_GRAPH_PATHS_PER_SEED", "5"))
 
     class Config:
         case_sensitive = True

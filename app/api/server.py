@@ -71,6 +71,8 @@ def _ensure_legacy_documents_schema() -> None:
         alter_statements.append("ALTER TABLE documents ADD COLUMN chunk_count INTEGER DEFAULT 0")
     if "ingest_log" not in existing:
         alter_statements.append("ALTER TABLE documents ADD COLUMN ingest_log TEXT")
+    if "graph_ready" not in existing:
+        alter_statements.append("ALTER TABLE documents ADD COLUMN graph_ready BOOLEAN DEFAULT FALSE")
 
     if not alter_statements:
         return

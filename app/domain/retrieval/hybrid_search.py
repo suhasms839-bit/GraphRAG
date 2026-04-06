@@ -9,6 +9,8 @@ from app.infrastructure.vectorstore.manager import VectorStoreManager
 from app.core.logging import logger
 from app.core.config import settings
 import re
+import math
+import statistics
 
 class HybridRetriever:
     def __init__(self, manager: VectorStoreManager):
@@ -118,7 +120,53 @@ class HybridRetriever:
 
         detailed_hits = []
         scores = []
+        combined_raw_scores = []
         primary_order = primary_vector_order if primary_vector_order else []
+
+        # helper: overlap between two texts
+        def overlap_between(a: str, b: str) -> float:
+            try:
+                at = set(re.findall(r"\w+", a.lower()))
+                bt = set(re.findall(r"\w+", b.lower()))
+                if not at:
+                    return 0.0
+                return len(at.intersection(bt)) / max(1, len(at))
+            except Exception:
+                return 0.0
+
+        # adaptive weight chooser based on query and graph seed confidence
+        def choose_weights(q: str, graph_conf: float):
+            q_len = len(q.split()) if q else 0
+            try:
+                if graph_conf > 0.7:
+                    return 0.4, 0.2, 0.4
+                if q_len <= 3:
+                    return 0.3, 0.5, 0.2
+            except Exception:
+                pass
+            return 0.5, 0.3, 0.2
+
+        # robust normalizer: z-score followed by sigmoid; fallback to rank-norm if sigma tiny
+        def normalize_scores(scores: List[float]) -> List[float]:
+            if not scores:
+                return []
+            if len(scores) == 1:
+                return [1.0]
+            mu = statistics.mean(scores)
+            sigma = statistics.pstdev(scores)  # population stddev
+            eps = 1e-6
+            if sigma < 1e-4:
+                # rank-based normalization
+                ranked = sorted(((s, i) for i, s in enumerate(scores)), key=lambda x: x[0])
+                ranks = {idx: r for r, (_, idx) in enumerate(ranked)}
+                n = len(scores)
+                if n <= 1:
+                    return [1.0 for _ in scores]
+                return [ranks[i] / (n - 1) for i in range(n)]
+            # z-score -> sigmoid
+            z = [(s - mu) / (sigma + eps) for s in scores]
+            return [1.0 / (1.0 + math.exp(-v)) for v in z]
+
         for idx, hit in enumerate(final_hits[:k]):
             content = hit.get("content", "")
             # vector rank (position in primary vector order)
@@ -138,8 +186,55 @@ class HybridRetriever:
             vec_score = (1.0 - (vector_pos / k)) if (vector_pos is not None and k > 0) else 0.0
             bm25_score = (1.0 - (bm25_pos / k)) if (bm25_pos is not None and k > 0) else 0.0
 
-            score_value = 0.5 * vec_score + 0.2 * bm25_score + 0.2 * overlap + 0.1 * length_score
-            score_value = max(0.0, min(1.0, score_value))
+            # Graph score: compare hit content to graph seed contents (if any)
+            graph_score = 0.0
+            try:
+                # Check if graph signals should be used: ensure graph is ready for documents
+                from app.core.database import SessionLocal
+                from app.core.models import Document as DBDocument
+                graph_enabled = True
+                try:
+                    doc_ids = set()
+                    for h in final_hits[:k]:
+                        did = h.get("metadata", {}).get("document_id")
+                        if did:
+                            doc_ids.add(did)
+                    if doc_ids:
+                        db = SessionLocal()
+                        rows = db.query(DBDocument.id, DBDocument.graph_ready).filter(DBDocument.id.in_(list(doc_ids))).all()
+                        db.close()
+                        # if any doc is not graph_ready, disable graph scoring for this request
+                        for _id, ready in rows:
+                            if not ready:
+                                graph_enabled = False
+                                break
+                except Exception:
+                    graph_enabled = False
+
+                if graph_enabled:
+                    for seed in graph_seeds:
+                        seed_content = seed.get("content", "")
+                        seed_rel = seed.get("seed_score", 0) or 0
+                        path_len = int(seed.get("metadata", {}).get("path_length", seed.get("path_length", 0) or 0))
+                        max_depth = int(getattr(settings, "MAX_GRAPH_PATH_DEPTH", 2))
+                        if path_len and path_len > max_depth:
+                            continue
+                        # overlap between hit and seed, weighted by seed's internal score and penalized by path length
+                        g_ov = overlap_between(content, seed_content)
+                        decay = 0.85 ** path_len if path_len and path_len > 0 else 1.0
+                        graph_score = max(graph_score, g_ov * float(seed_rel) * decay)
+            except Exception:
+                graph_score = 0.0
+
+            # choose adaptive weights per query and graph seed confidence
+            try:
+                graph_seed_conf = max((s.get("seed_score", 0) or 0) for s in graph_seeds) if graph_seeds else 0.0
+            except Exception:
+                graph_seed_conf = 0.0
+
+            w_vec, w_bm25, w_graph = choose_weights(query, graph_seed_conf)
+            combined_raw = w_vec * vec_score + w_bm25 * bm25_score + w_graph * graph_score
+            combined_raw = max(0.0, min(1.0, combined_raw))
 
             detailed = {
                 "index": idx,
@@ -149,12 +244,22 @@ class HybridRetriever:
                 "bm25_pos": bm25_pos,
                 "overlap": overlap,
                 "length_score": length_score,
-                "score": score_value
+                "graph_score": graph_score,
+                "raw": combined_raw,
+                # 'score' will be normalized later
             }
             detailed_hits.append(detailed)
-            scores.append(score_value)
+            combined_raw_scores.append(combined_raw)
 
         # Determine top score and mode
+        # robust normalization across combined raw scores
+        norm_scores = normalize_scores(combined_raw_scores)
+
+        # attach normalized scores back to detailed_hits and prepare scores list
+        for i, s in enumerate(norm_scores):
+            detailed_hits[i]["score"] = s
+        scores = norm_scores
+
         top_score = max(scores) if scores else 0.0
         mode = "fallback"
         if top_score >= settings.STRONG_CONTEXT_THRESHOLD:

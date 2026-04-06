@@ -37,6 +37,7 @@ class Document(Base):
     ingested = Column(Boolean, default=False)
     chunk_count = Column(Integer, default=0)
     ingest_log = Column(Text, nullable=True)
+    graph_ready = Column(Boolean, default=False)
     
     # Relationships
     owner = relationship("User", back_populates="documents")

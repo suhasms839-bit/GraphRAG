@@ -44,6 +44,7 @@ class DocumentResponse(BaseModel):
     ingested: bool = False
     chunk_count: int = 0
     ingest_log: Optional[str] = None
+    graph_ready: bool = False
     
     class Config:
         from_attributes = True

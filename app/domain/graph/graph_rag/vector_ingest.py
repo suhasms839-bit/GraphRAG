@@ -9,8 +9,13 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 
+import asyncio
+
 from app.core.config import settings
 from app.core.logging import logger
+from app.domain.graph.graph_rag.graph_sync import upsert_entities_and_links
+from app.core.database import SessionLocal
+from app.core.models import Document
 
 class VectorIngestionPipeline:
     """
@@ -129,6 +134,49 @@ class VectorIngestionPipeline:
                 logger.info(f"Ingested {len(langchain_docs)} chunks for {filename} (User {self.user_id})")
                 status["ok"] = True
                 status["chunks"] = len(langchain_docs)
+                # schedule graph sync in background to upsert canonical entities and links
+                try:
+                    docs_for_graph = [
+                        {"content": d.page_content, "metadata": d.metadata}
+                        for d in langchain_docs
+                    ]
+
+                    async def _bg_sync(docs, doc_id: int):
+                        try:
+                            loop = asyncio.get_event_loop()
+                            ok = await loop.run_in_executor(None, upsert_entities_and_links, self.user_id, docs)
+                            # mark document.graph_ready if successful
+                            try:
+                                db = SessionLocal()
+                                doc = db.query(Document).filter(Document.id == doc_id).first()
+                                if doc:
+                                    if ok:
+                                        doc.graph_ready = True
+                                    else:
+                                        # leave False and schedule a retry
+                                        logger.warning(f"Graph sync reported failure for doc {doc_id}; will retry once.")
+                                        # simple retry after short delay
+                                        try:
+                                            import time
+                                            time.sleep(5)
+                                            ok2 = upsert_entities_and_links(self.user_id, docs)
+                                            if ok2:
+                                                doc.graph_ready = True
+                                        except Exception as e:
+                                            logger.exception(f"Retry graph sync failed for doc {doc_id}: {e}")
+                                    db.add(doc)
+                                    db.commit()
+                                db.close()
+                            except Exception as ex:
+                                logger.exception(f"Failed to set graph_ready for doc {doc_id}: {ex}")
+                        except Exception as e:
+                            logger.exception(f"Background graph sync failed: {e}")
+
+                    # fire-and-forget
+                    asyncio.create_task(_bg_sync(docs_for_graph, doc_id))
+                except Exception:
+                    logger.exception("Failed to schedule graph sync")
+
                 return status
             except Exception as e:
                 logger.error(f"Failed to store chunks in Chroma: {e}")

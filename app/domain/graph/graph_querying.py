@@ -83,20 +83,25 @@ def query_graph_smart(question: str, limit: int = 5, anchor_hits: List[Dict[str,
     if anchor_hits and len(anchor_hits) >= 2:
         anchor_ids = [h["metadata"].get("chunk_id") for h in anchor_hits[:3] if h["metadata"].get("chunk_id")]
         if len(anchor_ids) >= 2:
-            path_cypher = """
+            max_depth = int(getattr(settings, "MAX_GRAPH_PATH_DEPTH", 2))
+            max_paths = int(getattr(settings, "MAX_GRAPH_PATHS_PER_SEED", 5))
+            path_cypher = f"""
             UNWIND $pairs AS pair
-            MATCH (start:Chunk {chunk_id: pair[0]}), (end:Chunk {chunk_id: pair[1]})
-            MATCH path = shortestPath((start)-[:RELATES_TO*1..3]-(end))
-            RETURN [n IN nodes(path) | n.text] AS texts
+            MATCH (start:Chunk {{chunk_id: pair[0]}}), (end:Chunk {{chunk_id: pair[1]}})
+            MATCH path = shortestPath((start)-[:RELATES_TO*1..{max_depth}]-(end))
+            RETURN [n IN nodes(path) | n.text] AS texts, length(path) AS path_length
             LIMIT 1
             """
             pairs = list(combinations(anchor_ids, 2))
             try:
                 with driver.session() as session:
-                    for pair in pairs[:3]:
+                    for pair in pairs[:max_paths]:
                         res = session.run(path_cypher, pairs=[pair])
                         for record in res:
-                            path_results.extend([{"content": t, "metadata": {"source": "GraphPath"}} for t in record["texts"]])
+                            texts = record.get("texts") or []
+                            pl = record.get("path_length") or 0
+                            for t in texts:
+                                path_results.append({"content": t, "metadata": {"source": "GraphPath", "path_length": pl}})
             except Exception as e:
                 logger.error(f"Steiner-Approx pathfinding failed: {e}")
 
@@ -114,8 +119,47 @@ def query_graph_smart(question: str, limit: int = 5, anchor_hits: List[Dict[str,
             for record in res:
                 content = record.get("content") or record.get("c.text")
                 if content:
-                    results.append({"content": content, "metadata": {"source": "Graph"}})
+                    results.append({"content": content, "metadata": {"source": "Graph", "path_length": 0}})
     except Exception as e:
         logger.error(f"Neo4j query failed: {e}")
 
-    return (path_results + results)[:limit]
+    # Combine path results and direct results
+    combined = path_results + results
+
+    # Seed scoring: pragmatic heuristic combining content-length and anchor overlap
+    scored = []
+    try:
+        seed_threshold = float(getattr(settings, "SEED_SCORE_THRESHOLD", 0.6))
+    except Exception:
+        seed_threshold = 0.6
+
+    anchor_texts = []
+    if anchor_hits:
+        for h in anchor_hits:
+            anchor_texts.append((h.get("metadata", {}).get("chunk_id"), h.get("content", "")))
+
+    for item in combined:
+        content = item.get("content", "")
+        # length-based score (longer contextual excerpts score higher)
+        length_score = min(1.0, len(content) / 1000.0)
+
+        # anchor overlap: if the content mentions any anchor chunk_id or share tokens
+        overlap_score = 0.0
+        for aid, atext in anchor_texts:
+            if not aid:
+                continue
+            if aid in content:
+                overlap_score = 1.0
+                break
+            # fallback token overlap heuristic
+            if atext and any(tok in content for tok in atext.split()[:5]):
+                overlap_score = max(overlap_score, 0.5)
+
+        seed_score = 0.6 * length_score + 0.4 * overlap_score
+        item["seed_score"] = seed_score
+        if seed_score >= seed_threshold:
+            scored.append(item)
+
+    logger.debug(f"Graph seed scores: {[s.get('seed_score') for s in combined]}")
+
+    return scored[:limit]
