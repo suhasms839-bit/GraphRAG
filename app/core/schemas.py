@@ -41,6 +41,9 @@ class DocumentResponse(BaseModel):
     file_size: int
     mime_type: str
     uploaded_at: datetime
+    ingested: bool = False
+    chunk_count: int = 0
+    ingest_log: Optional[str] = None
     
     class Config:
         from_attributes = True

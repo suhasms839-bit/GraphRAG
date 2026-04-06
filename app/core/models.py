@@ -34,6 +34,9 @@ class Document(Base):
     file_size = Column(Integer)  # in bytes
     mime_type = Column(String(100))
     uploaded_at = Column(DateTime, default=datetime.utcnow)
+    ingested = Column(Boolean, default=False)
+    chunk_count = Column(Integer, default=0)
+    ingest_log = Column(Text, nullable=True)
     
     # Relationships
     owner = relationship("User", back_populates="documents")

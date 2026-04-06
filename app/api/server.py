@@ -65,6 +65,12 @@ def _ensure_legacy_documents_schema() -> None:
         alter_statements.append("ALTER TABLE documents ADD COLUMN mime_type VARCHAR(100)")
     if "uploaded_at" not in existing:
         alter_statements.append("ALTER TABLE documents ADD COLUMN uploaded_at TIMESTAMP")
+    if "ingested" not in existing:
+        alter_statements.append("ALTER TABLE documents ADD COLUMN ingested BOOLEAN DEFAULT FALSE")
+    if "chunk_count" not in existing:
+        alter_statements.append("ALTER TABLE documents ADD COLUMN chunk_count INTEGER DEFAULT 0")
+    if "ingest_log" not in existing:
+        alter_statements.append("ALTER TABLE documents ADD COLUMN ingest_log TEXT")
 
     if not alter_statements:
         return

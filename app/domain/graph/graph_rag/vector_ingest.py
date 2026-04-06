@@ -116,6 +116,7 @@ class VectorIngestionPipeline:
             ))
             
         # 4. Storage (Vector DB)
+        status = {"ok": False, "chunks": 0, "errors": []}
         if langchain_docs:
             try:
                 # Store in user-specific Chroma
@@ -126,8 +127,11 @@ class VectorIngestionPipeline:
                     persist_directory=self.persist_directory
                 )
                 logger.info(f"Ingested {len(langchain_docs)} chunks for {filename} (User {self.user_id})")
-                return vectorstore
+                status["ok"] = True
+                status["chunks"] = len(langchain_docs)
+                return status
             except Exception as e:
                 logger.error(f"Failed to store chunks in Chroma: {e}")
-                return None
-        return None
+                status["errors"].append(str(e))
+                return status
+        return status

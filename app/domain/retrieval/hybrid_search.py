@@ -7,6 +7,8 @@ from .strategies.hypothetical_queries import HypotheticalQueryGenerator
 from .strategies.reranker import PrecisionReranker
 from app.infrastructure.vectorstore.manager import VectorStoreManager
 from app.core.logging import logger
+from app.core.config import settings
+import re
 
 class HybridRetriever:
     def __init__(self, manager: VectorStoreManager):
@@ -102,10 +104,74 @@ class HybridRetriever:
                     if parent_text:
                         hit["parent_context"] = parent_text
 
-        logger.info(f"Retrieved {len(final_hits)} docs. Confidence: {confidence_label} ({confidence_val})")
+        # 7. Relevance scoring per hit (heuristic)
+        def term_overlap_score(query: str, text: str) -> float:
+            try:
+                q_terms = set(re.findall(r"\w+", query.lower()))
+                t_terms = set(re.findall(r"\w+", text.lower()))
+                if not q_terms:
+                    return 0.0
+                overlap = q_terms.intersection(t_terms)
+                return min(1.0, len(overlap) / max(1, len(q_terms)))
+            except Exception:
+                return 0.0
+
+        detailed_hits = []
+        scores = []
+        primary_order = primary_vector_order if primary_vector_order else []
+        for idx, hit in enumerate(final_hits[:k]):
+            content = hit.get("content", "")
+            # vector rank (position in primary vector order)
+            try:
+                vector_pos = next((i for i, h in enumerate(primary_order) if h.get("content") == hit.get("content")), None)
+            except Exception:
+                vector_pos = None
+
+            try:
+                bm25_pos = next((i for i, h in enumerate(bm25_order) if h.get("content") == hit.get("content")), None)
+            except Exception:
+                bm25_pos = None
+
+            overlap = term_overlap_score(query, content)
+            length_score = min(1.0, len(content) / 500.0)
+
+            vec_score = (1.0 - (vector_pos / k)) if (vector_pos is not None and k > 0) else 0.0
+            bm25_score = (1.0 - (bm25_pos / k)) if (bm25_pos is not None and k > 0) else 0.0
+
+            score_value = 0.5 * vec_score + 0.2 * bm25_score + 0.2 * overlap + 0.1 * length_score
+            score_value = max(0.0, min(1.0, score_value))
+
+            detailed = {
+                "index": idx,
+                "content": content[:1000],
+                "metadata": hit.get("metadata", {}),
+                "vector_pos": vector_pos,
+                "bm25_pos": bm25_pos,
+                "overlap": overlap,
+                "length_score": length_score,
+                "score": score_value
+            }
+            detailed_hits.append(detailed)
+            scores.append(score_value)
+
+        # Determine top score and mode
+        top_score = max(scores) if scores else 0.0
+        mode = "fallback"
+        if top_score >= settings.STRONG_CONTEXT_THRESHOLD:
+            mode = "strong"
+        elif top_score >= settings.WEAK_CONTEXT_THRESHOLD or confidence_val >= 0.5:
+            mode = "hybrid"
+
+        logger.info(f"Retrieved {len(final_hits)} docs. Confidence: {confidence_label} ({confidence_val}) Mode: {mode} TopScore: {top_score}")
+        logger.debug(f"Top scores: {scores}")
+        logger.debug(f"Selected chunks: {[h.get('metadata',{}).get('source') for h in final_hits[:k]]}")
 
         return {
             "hits": final_hits[:k],
             "confidence": confidence_val,
-            "confidence_label": confidence_label
+            "confidence_label": confidence_label,
+            "detailed_hits": detailed_hits,
+            "scores": scores,
+            "mode": mode,
+            "top_score": top_score
         }

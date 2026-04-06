@@ -175,13 +175,27 @@ async def send_message(
 
 @router.get("/debug/retrieval")
 async def debug_retrieval(q: str, current_user: User = Depends(get_current_user)):
-    """Debug endpoint: return top-k retrieval hits for given query for the current user."""
+    """Debug endpoint: return top-k retrieval hits for given query for the current user with scores and mode."""
     try:
         manager = VectorStoreManager(user_id=current_user.id)
         retriever = HybridRetriever(manager)
-        hits = await retriever.retrieve(q, topic_title="Debug", k=5)
-        # Return only summarized fields
-        return {"query": q, "hits": [{"content": h.get("content"), "metadata": h.get("metadata")} for h in hits]}
+        resp = await retriever.retrieve(q, topic_title="Debug", k=5)
+
+        # Build debug payload
+        detailed = resp.get("detailed_hits", [])
+        scores = resp.get("scores", [])
+        hits = resp.get("hits", [])
+        mode = resp.get("mode", "unknown")
+
+        return {
+            "query": q,
+            "mode": mode,
+            "top_score": resp.get("top_score", 0.0),
+            "confidence": resp.get("confidence", 0.0),
+            "scores": scores,
+            "chunks": [{"content": h.get("content"), "metadata": h.get("metadata")} for h in hits],
+            "reranked": detailed
+        }
     except Exception as e:
         tb = traceback.format_exc()
         logger.error(f"Debug retrieval failed: {e}\n{tb}")

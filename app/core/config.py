@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     # LLM
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+
+    # Retrieval thresholds
+    STRONG_CONTEXT_THRESHOLD: float = float(os.getenv("STRONG_CONTEXT_THRESHOLD", "0.7"))
+    WEAK_CONTEXT_THRESHOLD: float = float(os.getenv("WEAK_CONTEXT_THRESHOLD", "0.4"))
     
     # Neo4j
     NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
