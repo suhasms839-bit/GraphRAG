@@ -1,0 +1,5 @@
+{
+  "name": "GraphRAG Learning Platform",
+  "description": "A modular Agentic RAG system for educational content with Graph-enhanced retrieval and high-performance generation.",
+  "requestFramePermissions": []
+}

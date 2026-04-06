@@ -1,0 +1,74 @@
+
+[TEST START] Verifying Generation/Confidence Logic (OFFLINE)
+2026-04-06 13:35:49,932 [INFO] sentence_transformers.SentenceTransformer: Use pytorch device_name: cpu
+2026-04-06 13:35:49,932 [INFO] sentence_transformers.SentenceTransformer: Load pretrained SentenceTransformer: sentence-transformers/all-MiniLM-L6-v2
+2026-04-06 13:35:51,716 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/modules.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-06 13:35:51,717 [WARNING] huggingface_hub.utils._http: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-04-06 13:35:51,830 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/c9745ed1d9f207416be6d2e6f8de32d1f16199bf/modules.json "HTTP/1.1 200 OK"
+2026-04-06 13:35:52,432 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/config_sentence_transformers.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-06 13:35:52,538 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/c9745ed1d9f207416be6d2e6f8de32d1f16199bf/config_sentence_transformers.json "HTTP/1.1 200 OK"
+2026-04-06 13:35:52,944 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/config_sentence_transformers.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-06 13:35:53,055 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/c9745ed1d9f207416be6d2e6f8de32d1f16199bf/config_sentence_transformers.json "HTTP/1.1 200 OK"
+2026-04-06 13:35:53,558 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/README.md "HTTP/1.1 307 Temporary Redirect"
+2026-04-06 13:35:53,763 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/c9745ed1d9f207416be6d2e6f8de32d1f16199bf/README.md "HTTP/1.1 200 OK"
+2026-04-06 13:35:54,133 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/modules.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-06 13:35:54,378 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/c9745ed1d9f207416be6d2e6f8de32d1f16199bf/modules.json "HTTP/1.1 200 OK"
+2026-04-06 13:35:54,788 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/sentence_bert_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-06 13:35:54,993 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/c9745ed1d9f207416be6d2e6f8de32d1f16199bf/sentence_bert_config.json "HTTP/1.1 200 OK"
+2026-04-06 13:35:55,410 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/adapter_config.json "HTTP/1.1 404 Not Found"
+2026-04-06 13:35:55,812 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-06 13:35:55,919 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/c9745ed1d9f207416be6d2e6f8de32d1f16199bf/config.json "HTTP/1.1 200 OK"
+2026-04-06 13:35:56,529 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-06 13:35:56,734 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/c9745ed1d9f207416be6d2e6f8de32d1f16199bf/config.json "HTTP/1.1 200 OK"
+2026-04-06 13:35:57,142 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-06 13:35:57,350 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/c9745ed1d9f207416be6d2e6f8de32d1f16199bf/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-04-06 13:35:57,756 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/sentence-transformers/all-MiniLM-L6-v2/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-04-06 13:35:58,166 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/sentence-transformers/all-MiniLM-L6-v2/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-04-06 13:35:58,678 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/1_Pooling/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-06 13:35:58,795 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/c9745ed1d9f207416be6d2e6f8de32d1f16199bf/1_Pooling%2Fconfig.json "HTTP/1.1 200 OK"
+2026-04-06 13:35:59,501 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/sentence-transformers/all-MiniLM-L6-v2 "HTTP/1.1 200 OK"
+Executing RAG (Confidence: Step 2.5, Fallback: Step 4)
+2026-04-06 13:35:59,506 [INFO] app: Answering question: Explain common bus topology limitations.
+2026-04-06 13:36:00,946 [ERROR] app.infrastructure.vectorstore.manager: Failed to initialize Chroma vectorstore at ./chroma_db\user_48: 'RustBindingsAPI' object has no attribute 'bindings'
+2026-04-06 13:36:00,987 [WARNING] app.infrastructure.vectorstore.manager: Vectorstore unavailable or empty; attempting DB/file fallback similarity search
+2026-04-06 13:36:00,993 [ERROR] app.infrastructure.vectorstore.manager: Failed to initialize Chroma vectorstore at ./chroma_db\user_48: './chroma_db\\user_48'
+2026-04-06 13:36:00,993 [WARNING] app.infrastructure.vectorstore.manager: Vectorstore unavailable or empty; attempting DB/file fallback similarity search
+2026-04-06 13:36:01,581 [INFO] app: Waiting 60s before attempting Neo4j connection (AURA wait)
+2026-04-06 13:36:03,112 [INFO] app: Retrieved 0 docs. Confidence: Low (0.0)
+2026-04-06 13:36:03,112 [INFO] app: RAG context parts count: 0
+2026-04-06 13:36:03,113 [INFO] app: RAG context preview: 
+2026-04-06 13:36:03,113 [INFO] app: RAG prompt preview (truncated 2000 chars): ### ROLE: Expert Learning Assistant (RAG v3.0)
+    
+### INSTRUCTION (Groundedness: Low):
+The retrieved documents contain limited information. Use your general knowledge to answer, but start your answer with this exact disclaimer: 'Retrieved documents contain limited information regarding this specific query. The following answer is based on general technical knowledge.'
+
+### CORE TOPIC:
+Computer Networks
+
+### STUDENT QUESTION:
+"Explain common bus topology limitations."
+
+### CONTEXT (Retrieved Hits):
+
+
+### DATA GRAPH CONTEXT:
+[]
+
+### REQUIREMENTS:
+1. Structure your answer clearly with markdown formatting.
+2. Maintain the specified groundedness constraints.
+3. If confidence is LOW, ensure the designated disclaimer is present.
+
+### Answer:
+
+--- FINAL GENERATED ANSWER ---
+LLM Error: HTTP Error 429: Too Many Requests
+
+[METADATA]: Confidence=Low (0.0)
+[SOURCE TYPE]: General Knowledge
+
+--- CITATIONS ---
+2026-04-06 13:37:04,780 [INFO] app: Neo4j connectivity verified and driver cached.
+2026-04-06 13:37:06,057 [WARNING] neo4j.notifications: Received notification from DBMS server: <GqlStatusObject gql_status='01N50', status_description='warn: label does not exist. The label `Chunk` does not exist in database `55fedb63`. Verify that the spelling is correct.', position=<SummaryInputPosition line=1, column=32, offset=31>, raw_classification='UNRECOGNIZED', classification=<NotificationClassification.UNRECOGNIZED: 'UNRECOGNIZED'>, raw_severity='WARNING', severity=<NotificationSeverity.WARNING: 'WARNING'>, diagnostic_record={'_classification': 'UNRECOGNIZED', '_severity': 'WARNING', '_position': {'offset': 31, 'line': 1, 'column': 32}, 'OPERATION': '', 'OPERATION_CODE': '0', 'CURRENT_SCHEMA': '/'}> for query: 'UNWIND $terms AS term MATCH (c:Chunk) WHERE toLower(c.text) CONTAINS term RETURN c.text AS content LIMIT $limit'
+2026-04-06 13:37:06,058 [WARNING] neo4j.notifications: Received notification from DBMS server: <GqlStatusObject gql_status='01N52', status_description='warn: property key does not exist. The property `text` does not exist in database `55fedb63`. Verify that the spelling is correct.', position=<SummaryInputPosition line=1, column=55, offset=54>, raw_classification='UNRECOGNIZED', classification=<NotificationClassification.UNRECOGNIZED: 'UNRECOGNIZED'>, raw_severity='WARNING', severity=<NotificationSeverity.WARNING: 'WARNING'>, diagnostic_record={'_classification': 'UNRECOGNIZED', '_severity': 'WARNING', '_position': {'offset': 54, 'line': 1, 'column': 55}, 'OPERATION': '', 'OPERATION_CODE': '0', 'CURRENT_SCHEMA': '/'}> for query: 'UNWIND $terms AS term MATCH (c:Chunk) WHERE toLower(c.text) CONTAINS term RETURN c.text AS content LIMIT $limit'
+2026-04-06 13:37:06,058 [WARNING] neo4j.notifications: Received notification from DBMS server: <GqlStatusObject gql_status='01N52', status_description='warn: property key does not exist. The property `text` does not exist in database `55fedb63`. Verify that the spelling is correct.', position=<SummaryInputPosition line=1, column=84, offset=83>, raw_classification='UNRECOGNIZED', classification=<NotificationClassification.UNRECOGNIZED: 'UNRECOGNIZED'>, raw_severity='WARNING', severity=<NotificationSeverity.WARNING: 'WARNING'>, diagnostic_record={'_classification': 'UNRECOGNIZED', '_severity': 'WARNING', '_position': {'offset': 83, 'line': 1, 'column': 84}, 'OPERATION': '', 'OPERATION_CODE': '0', 'CURRENT_SCHEMA': '/'}> for query: 'UNWIND $terms AS term MATCH (c:Chunk) WHERE toLower(c.text) CONTAINS term RETURN c.text AS content LIMIT $limit'

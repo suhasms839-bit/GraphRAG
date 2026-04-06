@@ -1,0 +1,1 @@
+Bus topology is a network topology where each device is connected to a common bus. Advantages: simple, low cost. Disadvantages: collisions, single point of failure.

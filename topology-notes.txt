@@ -1,0 +1,1 @@
+Network topology is the arrangement of nodes and links in a communication network. Bus topology connects all devices to a single backbone cable. It is simple and low cost but a backbone failure can bring down the network.
