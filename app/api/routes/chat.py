@@ -8,6 +8,7 @@ from app.core.schemas import ChatRequest, ChatResponse, ConversationResponse, Co
 from app.core.security import verify_token
 from app.core.logging import logger
 from app.domain.generation.answer_engine import answer_with_rag
+from app.domain.generation.llm_gateway import clean_response
 from app.domain.learning.course_builder import CourseBuilder
 from app.infrastructure.vectorstore.manager import VectorStoreManager
 from app.domain.retrieval.hybrid_search import HybridRetriever
@@ -132,29 +133,29 @@ async def send_message(
         confidence_rate = result.get("confidence", 0.5)
         confidence_label = "High" if confidence_rate >= 0.75 else ("Medium" if confidence_rate >= 0.5 else "Low")
         
-        # Determine source footer for v3.0 explainability
+        # Clean and trim the assistant answer to remove conversation history and raw context
+        cleaned_answer = clean_response(answer)
+
+        # Determine source type for metadata (do not inject into answer body)
         unique_sources = set([c.get("source", "Unknown") for c in citations])
-        source_footer = f"Retrieved documents: {', '.join(list(unique_sources))}" if unique_sources else "General Knowledge"
-        
-        # Append v3.0 metadata headers to the final answer string
-        final_answer_text = f"{answer}\n\n[Source]\n- {source_footer}\n\n[Confidence]\n{confidence_label}"
+        source_type = f"Retrieved documents: {', '.join(list(unique_sources))}" if unique_sources else "General Knowledge"
 
         chat_response = ChatResponse(
             conversation_id=conversation.id,
             message_id=user_message.id + 1,
-            answer=final_answer_text,
+            answer=cleaned_answer,
             key_points=key_points,
             citations=citations,
             confidence=confidence_rate,
             confidence_label=confidence_label,
-            source_type=source_footer
+            source_type=source_type
         )
 
-        # Store assistant message in DB
+        # Store assistant message in DB (store only cleaned answer)
         bot_message = Message(
             conversation_id=conversation.id,
             role="assistant",
-            content=final_answer_text,
+            content=cleaned_answer,
             citations=json.dumps(citations),
             confidence=confidence_label
         )

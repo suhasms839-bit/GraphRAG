@@ -3,7 +3,7 @@ import re
 from app.infrastructure.vectorstore.manager import VectorStoreManager
 from app.domain.retrieval.hybrid_search import HybridRetriever
 from app.domain.graph.graph_querying import query_graph_smart
-from app.domain.generation.llm_gateway import call_gemini_text
+from app.domain.generation.llm_gateway import call_gemini_text, format_final_output
 from app.core.logging import logger
 
 async def answer_with_rag(
@@ -33,12 +33,7 @@ async def answer_with_rag(
 ### INSTRUCTION: Use your general technical knowledge to provide a comprehensive and accurate answer.
 ### Answer:"""
         answer = call_gemini_text(prompt, max_tokens=800) or "I'm sorry, I don't have enough information to answer that."
-        metadata = {
-            "confidence": 0.0,
-            "confidence_label": "Low",
-            "source_type": "General Knowledge"
-        }
-        return answer, [], metadata
+        return format_final_output(answer, [], 0.0, "General Knowledge")
 
     # 4.2 Prompt Strategy (FIX 2: NATURAL INTEGRATION)
     if confidence_val >= 0.75:
@@ -95,13 +90,6 @@ async def answer_with_rag(
     ### Answer:"""
 
     answer = call_gemini_text(prompt, max_tokens=800) or "No relevant content found."
-    
     citations = [{"file": h["metadata"].get("source", "Unknown"), "page": h["metadata"].get("page")} for h in ranked_hits]
-    
-    metadata = {
-        "confidence": confidence_val,
-        "confidence_label": confidence_label,
-        "source_type": "Retrieved documents" if confidence_val > 0.5 else "General Knowledge"
-    }
-
-    return answer, citations, metadata
+    source_type = "Retrieved documents" if confidence_val > 0.5 else "General Knowledge"
+    return format_final_output(answer, citations, confidence_val, source_type)

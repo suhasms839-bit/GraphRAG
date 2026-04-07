@@ -103,3 +103,33 @@ def extract_json_object_text(text: str) -> Dict[str, Any]:
     except:
         pass
     return {}
+
+
+def clean_response(text: str) -> str:
+    if not text:
+        return ""
+    remove_patterns = [
+        "Consider the following conversation history",
+        "History:",
+        "USER:",
+        "ASSISTANT:",
+        "Current Question:",
+        "based on retrieved documents:",
+        "Topic:",
+        "Content:"
+    ]
+    out = text
+    for pattern in remove_patterns:
+        if pattern in out:
+            out = out.split(pattern)[-1]
+    return out.strip()
+
+
+def format_final_output(answer: str, citations: List[Dict[str, Any]], confidence: float, source: str) -> Dict[str, Any]:
+    clean = clean_response(answer)
+    return {
+        "answer": clean,
+        "citations": citations or [],
+        "confidence": float(confidence) if confidence is not None else 0.0,
+        "source": source or ""
+    }

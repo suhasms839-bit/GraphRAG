@@ -2,7 +2,7 @@ import asyncio
 import json
 import re
 from typing import List, Dict, Any, Tuple
-from app.domain.generation.llm_gateway import call_gemini_with_tools, extract_json_object_text
+from app.domain.generation.llm_gateway import call_gemini_with_tools, extract_json_object_text, format_final_output
 from app.domain.agents.tools import AGENT_TOOLS
 from app.domain.retrieval.hybrid_search import HybridRetriever
 from app.domain.graph.graph_querying import query_graph_smart
@@ -34,13 +34,8 @@ class AgenticOrchestrator:
         
         if not semantic_hits:
             # Fallback to general knowledge
-            return {
-                "answer": f"Based on general knowledge: {question} requires specific context from uploaded documents. Please upload relevant materials for a detailed answer.",
-                "key_points": ["No relevant documents found in knowledge base"],
-                "placement_insight": "Technical questions typically require domain-specific knowledge from course materials",
-                "citations": [],
-                "confidence": 0.1
-            }
+            answer = f"Based on general knowledge: {question} requires specific context from uploaded documents. Please upload relevant materials for a detailed answer."
+            return format_final_output(answer, [], 0.1, "General Knowledge")
         
         # Continue with existing logic but with retrieved context
         context_text = "\n\n".join([f"Evidence: {h.get('content', '')}" for h in semantic_hits])
@@ -91,7 +86,11 @@ Your goal is to transform the provided context into a precise, verifiable, and g
                     structured_data = extract_json_object_text(direct_response)
                     if structured_data and "answer" in structured_data:
                         logger.info("Direct Synthesis successful, bypassing agent loop.")
-                        return structured_data
+                        ans = structured_data.get("answer", "")
+                        citations = structured_data.get("citations", [])
+                        confidence = structured_data.get("confidence", 0.5)
+                        source = structured_data.get("source", "")
+                        return format_final_output(ans, citations, confidence, source)
                 except Exception as e:
                     logger.warning(f"Failed to parse direct synthesis: {e}")
 
@@ -117,15 +116,13 @@ Your goal is to transform the provided context into a precise, verifiable, and g
                 if "error" in response:
                     if "429" in str(response["error"]):
                         # CRITICAL: If 429, don't just return error, return the best effort based on context
-                        return {
-                            "answer": f"I can explain {question} based on retrieved documents: " + 
-                                     " ".join([h.get('content', '')[:200] for h in semantic_hits[:2]]),
-                            "key_points": ["Direct Context Retrieval (Agent Rate Limited)"],
-                            "placement_insight": "Commonly asked topic in technical interviews.",
-                            "citations": [],
-                            "confidence": 0.5
-                        }
-                    return {"answer": f"Agent Error: {response['error']}", "key_points": [], "citations": [], "confidence": 0}
+                        return format_final_output(
+                            f"I can explain {question} based on retrieved documents: " + " ".join([h.get('content', '')[:200] for h in semantic_hits[:2]]),
+                            [],
+                            0.5,
+                            "Retrieved documents"
+                        )
+                    return format_final_output(f"Agent Error: {response['error']}", [], 0.0, "")
                 
                 messages.append(response)
                 
@@ -138,16 +135,14 @@ Your goal is to transform the provided context into a precise, verifiable, and g
                     try:
                         structured_data = extract_json_object_text(final_text)
                         if structured_data:
-                            return structured_data
+                            ans = structured_data.get("answer", "")
+                            citations = structured_data.get("citations", [])
+                            confidence = structured_data.get("confidence", 0.5)
+                            source = structured_data.get("source", "")
+                            return format_final_output(ans, citations, confidence, source)
                     except:
                         # Best effort if JSON fails
-                        return {
-                            "answer": final_text[:500],
-                            "key_points": ["Partial Answer"],
-                            "placement_insight": "",
-                            "citations": [],
-                            "confidence": 0.4
-                        }
+                        return format_final_output(final_text[:500], [], 0.4, "Retrieved documents")
                 
                 tool_responses = []
                 for call in tool_calls:
@@ -173,14 +168,13 @@ Your goal is to transform the provided context into a precise, verifiable, and g
                 break
         
         # 4. Ultimate Fallback (If loop finished/failed without structured_data)
-        return {
-            "answer": f"Completed research on {question}. Most relevant excerpts: " + 
-                     " ".join([h.get('content', '')[:150] for h in semantic_hits[:3]]),
-            "key_points": ["Context successfully retrieved"],
-            "placement_insight": "Interviewers often test understanding of fundamental topologies like " + question,
-            "citations": [],
-            "confidence": 0.3
-        }
+        # 4. Ultimate Fallback (If loop finished/failed without structured_data)
+        return format_final_output(
+            f"Completed research on {question}. Most relevant excerpts: " + " ".join([h.get('content', '')[:150] for h in semantic_hits[:3]]),
+            [],
+            0.3,
+            "Retrieved documents"
+        )
 
     async def execute_tool(self, name: str, args: Dict[str, Any], topic_title: str, context_accumulator: List[Dict[str, Any]]) -> str:
         if name == "local_search":
