@@ -15,7 +15,8 @@ def call_gemini_text(
     if not api_key:
         return "GEMINI_API_KEY not configured."
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent?key={api_key}"
+    # Stable v1 for pure text generation
+    url = f"https://generativelanguage.googleapis.com/v1/models/{settings.GEMINI_MODEL}:generateContent?key={api_key}"
     
     body = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -55,6 +56,7 @@ def call_gemini_with_tools(
     if not api_key:
         return {"error": "GEMINI_API_KEY not configured."}
 
+    # IMPORTANT: Tool calling requires 'v1beta' for most Gemini models in standard API
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent?key={api_key}"
     
     body = {
@@ -76,6 +78,9 @@ def call_gemini_with_tools(
         # pass-through for backward compatibility; most keys will be ignored by the API
         body.update({k: v for k, v in kwargs.items() if k not in body})
     
+    # DEBUG: Print the payload to identify schema mismatches
+    # print(f"GEMINI CALL BODY: {json.dumps(body, indent=2)}")
+
     req = urllib.request.Request(
         url,
         data=json.dumps(body).encode("utf-8"),
@@ -89,6 +94,9 @@ def call_gemini_with_tools(
             candidates = payload.get("candidates", [])
             if candidates:
                 return candidates[0]["content"]
+    except urllib.error.HTTPError as he:
+        err_msg = he.read().decode("utf-8")
+        return {"error": f"HTTP Error {he.code}: {err_msg}"}
     except Exception as e:
         return {"error": str(e)}
     return {}
@@ -125,11 +133,14 @@ def clean_response(text: str) -> str:
     return out.strip()
 
 
-def format_final_output(answer: str, citations: List[Dict[str, Any]], confidence: float, source: str) -> Dict[str, Any]:
+def format_final_output(answer: str, citations: List[Dict[str, Any]], confidence: float, source: str, confidence_reason: str = "") -> Dict[str, Any]:
     clean = clean_response(answer)
-    return {
+    out = {
         "answer": clean,
         "citations": citations or [],
         "confidence": float(confidence) if confidence is not None else 0.0,
         "source": source or ""
     }
+    if confidence_reason:
+        out["confidence_reason"] = confidence_reason
+    return out

@@ -11,6 +11,7 @@ from app.core.config import settings
 import re
 import math
 import statistics
+import time
 
 class HybridRetriever:
     def __init__(self, manager: VectorStoreManager):
@@ -65,37 +66,23 @@ class HybridRetriever:
         primary_vector_order = vector_results[0] if vector_results else all_hits
         fused_hits = rerank_with_rrf(all_hits, primary_vector_order, bm25_order)
         
-        # 5. Precision Reranking (LLM-based)
+        # 5. Precision Reranking (LLM-based) with timeout-based skip
         reranker = PrecisionReranker()
-        final_hits = await reranker.rerank(query, fused_hits, top_n=k)
-        
-        # 2.5 Confidence Scoring (MANDATORY Step 2.5)
-        # Compute confidence based on the best similarity score from the top result
-        # Since our similarity_search might not return raw score easily, 
-        # we'll look at the consistency of the top hits or use the LLM to rate confidence.
-        # But for Step 2.5, we'll implement a simple score-based heuristic.
-        
-        # Assuming our similarity search provides a score in metadata if possible, 
-        # or we use the reranker's assessment.
-        
-        # If the top hit after reranking was also in the top of vector search, 
-        # let's assume high confidence.
-        confidence_val = 0.0
-        if final_hits:
-            # Simple heuristic: if we have more than 2 hits from different sources, confidence is higher
-            sources = len(set(h["metadata"].get("source") for h in final_hits))
-            if sources >= 2:
-                confidence_val = 0.8
-            elif sources == 1:
-                confidence_val = 0.6
-            else:
-                confidence_val = 0.4
-        
-        confidence_label = "Low"
-        if confidence_val >= 0.75:
-            confidence_label = "High"
-        elif confidence_val >= 0.5:
-            confidence_label = "Medium"
+        # Measure time to decide whether to run expensive reranker/graph scoring
+        reranker_timeout = float(getattr(settings, "RE_RANKER_TIMEOUT", 0.5))
+        start_t = time.monotonic()
+        reranker_skipped = False
+        try:
+            # try to run reranker within timeout
+            final_hits = await asyncio.wait_for(reranker.rerank(query, fused_hits, top_n=k), timeout=reranker_timeout)
+        except Exception:
+            # on timeout or error, fall back to fused hits (best-effort)
+            final_hits = fused_hits[:k]
+            reranker_skipped = True
+
+        elapsed = time.monotonic() - start_t
+        # if reranker took too long, also skip graph-based scoring to keep latency bounded
+        skip_graph_due_to_time = elapsed > reranker_timeout
 
         # 6. Parent Context Enrichment
         if include_parent:
@@ -211,7 +198,8 @@ class HybridRetriever:
                 except Exception:
                     graph_enabled = False
 
-                if graph_enabled:
+                # Also respect time-based skip
+                if graph_enabled and not skip_graph_due_to_time:
                     for seed in graph_seeds:
                         seed_content = seed.get("content", "")
                         seed_rel = seed.get("seed_score", 0) or 0
@@ -225,6 +213,17 @@ class HybridRetriever:
                         graph_score = max(graph_score, g_ov * float(seed_rel) * decay)
             except Exception:
                 graph_score = 0.0
+
+            # Gate graph contribution by minimum trust
+            try:
+                min_trust = float(getattr(settings, "GRAPH_MIN_TRUST", 0.3))
+                if graph_score < min_trust:
+                    graph_score = 0.0
+            except Exception:
+                pass
+
+            # track whether graph contributed
+            graph_used_flag = graph_score > 0.0
 
             # choose adaptive weights per query and graph seed confidence
             try:
@@ -261,22 +260,40 @@ class HybridRetriever:
         scores = norm_scores
 
         top_score = max(scores) if scores else 0.0
+        # Warn on poor retrieval quality
+        try:
+            if top_score < 0.2:
+                logger.warning("Poor retrieval quality: top_score < 0.2")
+        except Exception:
+            pass
+
+        # blended confidence: 0.6 * top + 0.4 * avg(top3)
+        avg_top3 = 0.0
+        if scores:
+            n = min(3, len(scores))
+            top_n = sorted(scores, reverse=True)[:n]
+            avg_top3 = sum(top_n) / max(1, n)
+        confidence_val = 0.6 * top_score + 0.4 * avg_top3
+        confidence_reason = f"blended:0.6*top({top_score:.3f})+0.4*avgTop3({avg_top3:.3f})"
+
         mode = "fallback"
-        if top_score >= settings.STRONG_CONTEXT_THRESHOLD:
+        if top_score >= getattr(settings, "STRONG_CONTEXT_THRESHOLD", 0.75):
             mode = "strong"
-        elif top_score >= settings.WEAK_CONTEXT_THRESHOLD or confidence_val >= 0.5:
+        elif top_score >= getattr(settings, "WEAK_CONTEXT_THRESHOLD", 0.4) or confidence_val >= 0.5:
             mode = "hybrid"
 
-        logger.info(f"Retrieved {len(final_hits)} docs. Confidence: {confidence_label} ({confidence_val}) Mode: {mode} TopScore: {top_score}")
+        logger.info(f"Retrieved {len(final_hits)} docs. Confidence: {confidence_val:.3f} Mode: {mode} TopScore: {top_score}")
         logger.debug(f"Top scores: {scores}")
         logger.debug(f"Selected chunks: {[h.get('metadata',{}).get('source') for h in final_hits[:k]]}")
 
         return {
             "hits": final_hits[:k],
             "confidence": confidence_val,
-            "confidence_label": confidence_label,
+            "confidence_reason": confidence_reason,
             "detailed_hits": detailed_hits,
             "scores": scores,
             "mode": mode,
-            "top_score": top_score
+            "top_score": top_score,
+            "graph_used": graph_used_flag,
+            "reranker_skipped": reranker_skipped
         }

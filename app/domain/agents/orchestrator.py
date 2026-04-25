@@ -111,9 +111,13 @@ Your goal is to transform the provided context into a precise, verifiable, and g
         
         for i in range(max_iterations):
             try:
+                # Ensure tools are passed in the correct format for Gemini v1beta
+                # The API expects a list of tool objects, each with a 'function_declarations' list
                 response = call_gemini_with_tools(messages, tools=AGENT_TOOLS)
                 
-                if "error" in response:
+                if isinstance(response, dict) and "error" in response:
+                    # Log the full error for debugging
+                    logger.error(f"Gemini API Error in loop: {response['error']}")
                     if "429" in str(response["error"]):
                         # CRITICAL: If 429, don't just return error, return the best effort based on context
                         return format_final_output(

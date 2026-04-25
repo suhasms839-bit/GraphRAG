@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     # Graph path traversal limits
     MAX_GRAPH_PATH_DEPTH: int = int(os.getenv("MAX_GRAPH_PATH_DEPTH", "2"))
     MAX_GRAPH_PATHS_PER_SEED: int = int(os.getenv("MAX_GRAPH_PATHS_PER_SEED", "5"))
+    # Minimum graph trust to consider graph signal (0-1)
+    GRAPH_MIN_TRUST: float = float(os.getenv("GRAPH_MIN_TRUST", "0.3"))
+    # Context limits
+    MAX_CONTEXT_TOKENS: int = int(os.getenv("MAX_CONTEXT_TOKENS", "1200"))
+    CONTEXT_CHUNK_MIN_WORDS: int = int(os.getenv("CONTEXT_CHUNK_MIN_WORDS", "40"))
+    MAX_CONTEXT_CHUNKS: int = int(os.getenv("MAX_CONTEXT_CHUNKS", "5"))
 
     class Config:
         case_sensitive = True

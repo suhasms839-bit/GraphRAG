@@ -11,6 +11,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 @router.post("/signup", response_model=TokenResponse)
 async def signup(user_data: UserCreate, db: Session = Depends(get_db)):
     """Create a new user account"""
+    print(f"Signup request received: {user_data}")
+    logger.info(f"Signup request received: {user_data.email}")
     
     normalized_email = user_data.email.strip().lower()
     normalized_username = user_data.username.strip()
@@ -58,6 +60,8 @@ async def signup(user_data: UserCreate, db: Session = Depends(get_db)):
 @router.post("/login", response_model=TokenResponse)
 async def login(user_data: UserLogin, db: Session = Depends(get_db)):
     """Login user and return JWT token"""
+    print(f"Login request received: {user_data}")
+    logger.info(f"Login request received: {user_data.email}")
 
     normalized_email = user_data.email.strip().lower()
     user = db.query(User).filter(User.email == normalized_email).first()
