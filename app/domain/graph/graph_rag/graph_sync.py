@@ -2,6 +2,11 @@ from typing import List, Dict, Any
 import re
 from app.domain.graph.graph_querying import get_neo4j_driver
 from app.core.logging import logger
+from app.core.config import settings
+from app.domain.graph.graph_rag.community import GraphRAGCommunityManager
+from app.infrastructure.vectorstore.manager import VectorStoreManager
+import asyncio
+from langchain_core.documents import Document as LangchainDocument
 
 # Simple alias map; in production this should be extensible/configurable
 DEFAULT_ALIAS_MAP = {
@@ -54,12 +59,26 @@ def upsert_entities_and_links(user_id: int, docs: List[Dict[str, Any]], alias_ma
         return False
 
     try:
+        all_entities = []
+        all_relationships = []
+
         with driver.session() as session:
+            # track names to avoid duplicates
+            entity_names_set = set()
             for doc in docs:
-                chunk_id = doc.metadata.get("chunk_id")
-                text = doc.page_content if hasattr(doc, "page_content") else doc.get("content", "")
-                source = doc.metadata.get("source")
-                document_id = doc.metadata.get("document_id")
+                # support both LangChain Document objects and simple dict shapes
+                if isinstance(doc, dict):
+                    meta = doc.get("metadata", {}) or {}
+                    chunk_id = meta.get("chunk_id")
+                    text = doc.get("content") or doc.get("page_content") or ""
+                    source = meta.get("source")
+                    document_id = meta.get("document_id")
+                else:
+                    meta = getattr(doc, "metadata", {}) or {}
+                    chunk_id = meta.get("chunk_id")
+                    text = getattr(doc, "page_content", None) or meta.get("content", "")
+                    source = meta.get("source")
+                    document_id = meta.get("document_id")
 
                 # Create/merge Chunk node
                 try:
@@ -72,10 +91,26 @@ def upsert_entities_and_links(user_id: int, docs: List[Dict[str, Any]], alias_ma
 
                 # Extract candidate entities and normalize
                 candidates = extract_candidate_entities(text)
+                # record entities and co-occurrence relationships for community detection
                 for cand in candidates:
                     canon = alias_map.get(cand.lower(), None)
                     if not canon:
-                        # if no mapping, try normalize title-like or acronym expansion
+                        canon = normalize_entity(cand)
+                    alias = normalize_entity(cand)
+                    if canon and canon not in entity_names_set:
+                        entity_names_set.add(canon)
+                        all_entities.append({"name": canon})
+
+                # co-occurrence edges
+                for i in range(len(candidates)):
+                    for j in range(i+1, len(candidates)):
+                        s = normalize_entity(candidates[i])
+                        t = normalize_entity(candidates[j])
+                        all_relationships.append({"source": s, "target": t})
+
+                for cand in candidates:
+                    canon = alias_map.get(cand.lower(), None)
+                    if not canon:
                         canon = normalize_entity(cand)
                     alias = normalize_entity(cand)
 
@@ -92,6 +127,42 @@ def upsert_entities_and_links(user_id: int, docs: List[Dict[str, Any]], alias_ma
                         )
                     except Exception as e:
                         logger.warning(f"Failed to link entity {canon} for chunk {chunk_id}: {e}")
+
+        # After upserting chunks & entities, generate community summaries and persist
+        try:
+            community_manager = GraphRAGCommunityManager()
+            # process_communities is async; run it synchronously here
+            summaries = asyncio.run(community_manager.process_communities(all_entities, all_relationships))
+
+            # Persist community summaries into Neo4j and into global Chroma
+            try:
+                # Persist to Neo4j (Community nodes)
+                with driver.session() as session:
+                    for comm in summaries:
+                        cid = comm.get("community_id")
+                        summ = comm.get("summary") or ""
+                        ents = comm.get("entities") or []
+                        session.run(
+                            "MERGE (cs:Community {user_id:$user_id, community_id:$cid}) SET cs.summary = $summary, cs.entities = $ents",
+                            user_id=user_id, cid=cid, summary=summ[:4000], ents=ents
+                        )
+            except Exception as e:
+                logger.warning(f"Failed to persist community summaries to Neo4j: {e}")
+
+            # Persist summaries to global Chroma as fallback for global_search
+            try:
+                docs_for_global = []
+                for comm in summaries:
+                    docs_for_global.append(LangchainDocument(page_content=(comm.get("summary") or ""), metadata={"source": "community_summary", "community_id": comm.get("community_id"), "user_id": user_id}))
+
+                if docs_for_global and getattr(settings, "CHROMA_PERSIST_COMMUNITY_SUMMARIES", True):
+                    gsm = VectorStoreManager(user_id=None)
+                    gsm.create_vector_store(docs_for_global)
+            except Exception as e:
+                logger.warning(f"Failed to persist community summaries to global Chroma: {e}")
+
+        except Exception as e:
+            logger.warning(f"Community processing failed: {e}")
 
         return True
     except Exception as e:

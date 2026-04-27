@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # Retrieval thresholds
     STRONG_CONTEXT_THRESHOLD: float = float(os.getenv("STRONG_CONTEXT_THRESHOLD", "0.7"))
     WEAK_CONTEXT_THRESHOLD: float = float(os.getenv("WEAK_CONTEXT_THRESHOLD", "0.4"))
+    # LLM reranker controls
+    RERANKER_ENABLED: bool = os.getenv("RERANKER_ENABLED", "true").strip().lower() in {"1", "true", "yes", "y"}
+    RE_RANKER_TIMEOUT: float = float(os.getenv("RE_RANKER_TIMEOUT", "0.5"))
     # Graph seed scoring
     SEED_SCORE_THRESHOLD: float = float(os.getenv("SEED_SCORE_THRESHOLD", "0.6"))
     
@@ -40,6 +43,13 @@ class Settings(BaseSettings):
     MAX_CONTEXT_TOKENS: int = int(os.getenv("MAX_CONTEXT_TOKENS", "1200"))
     CONTEXT_CHUNK_MIN_WORDS: int = int(os.getenv("CONTEXT_CHUNK_MIN_WORDS", "40"))
     MAX_CONTEXT_CHUNKS: int = int(os.getenv("MAX_CONTEXT_CHUNKS", "5"))
+    # Chroma / per-user scaling guardrails
+    CHROMA_MAX_CHUNKS_PER_USER: int = int(os.getenv("CHROMA_MAX_CHUNKS_PER_USER", "20000"))
+    CHROMA_MAX_CHUNKS_PER_INGEST: int = int(os.getenv("CHROMA_MAX_CHUNKS_PER_INGEST", "2000"))
+    # Whether to persist community summaries into the global vectorstore
+    CHROMA_PERSIST_COMMUNITY_SUMMARIES: bool = os.getenv("CHROMA_PERSIST_COMMUNITY_SUMMARIES", "true").strip().lower() in {"1","true","yes","y"}
+    # Telemetry toggles
+    TELEMETRY_ENABLED: bool = os.getenv("TELEMETRY_ENABLED", "true").strip().lower() in {"1","true","yes","y"}
 
     class Config:
         case_sensitive = True

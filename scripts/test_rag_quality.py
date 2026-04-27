@@ -49,11 +49,20 @@ def test_quality():
     for q in questions:
         print(f"\n--- Question: {q} ---")
         import asyncio
-        answer, citations = asyncio.run(answer_with_rag(
+        result = asyncio.run(answer_with_rag(
             builder=builder,
             topic_title="Computer Networks",
             question=q
         ))
+        # Support both dict and tuple return shapes
+        if isinstance(result, dict):
+            answer = result.get("answer", "")
+            citations = result.get("citations", [])
+        elif isinstance(result, tuple) and len(result) >= 2:
+            answer, citations = result[0], result[1]
+        else:
+            raise AssertionError(f"Unexpected answer_with_rag return shape: {type(result)}")
+
         print(f"Answer: {answer}")
         print(f"Citations: {citations}")
 

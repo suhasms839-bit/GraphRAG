@@ -3,7 +3,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 from app.core.database import engine, Base
-from app.api.routes import auth, documents, chat
+from app.api.routes import auth, documents, chat, system
 from app.core.logging import logger
 
 # Create database tables
@@ -100,6 +100,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(documents.router)
 app.include_router(chat.router)
+app.include_router(system.router)
 
 @app.get("/health")
 async def health_check():

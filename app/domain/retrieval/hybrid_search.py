@@ -65,24 +65,72 @@ class HybridRetriever:
         # 4. Hybrid Fusion (RRF)
         primary_vector_order = vector_results[0] if vector_results else all_hits
         fused_hits = rerank_with_rrf(all_hits, primary_vector_order, bm25_order)
+
+        # Deterministic reranking fallback used when LLM reranking is skipped.
+        # Goal: avoid a quality cliff under concurrency/timeouts.
+        def _heuristic_rerank_on_skip(hits: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+            if not hits:
+                return []
+
+            # Precompute positions from upstream rankers (lower pos == better)
+            vector_pos_map = {h.get("content"): i for i, h in enumerate(primary_vector_order or [])}
+            bm25_pos_map = {h.get("content"): i for i, h in enumerate(bm25_order or [])}
+
+            def _term_overlap(q: str, text: str) -> float:
+                try:
+                    q_terms = set(re.findall(r"\w+", (q or "").lower()))
+                    t_terms = set(re.findall(r"\w+", (text or "").lower()))
+                    if not q_terms:
+                        return 0.0
+                    return len(q_terms.intersection(t_terms)) / max(1, len(q_terms))
+                except Exception:
+                    return 0.0
+
+            def _score(hit: Dict[str, Any]) -> float:
+                content = hit.get("content") or ""
+                overlap = _term_overlap(query, content)
+
+                # Rank-based priors (favor BM25 for short/keyword-y queries)
+                vp = vector_pos_map.get(content)
+                bp = bm25_pos_map.get(content)
+                vec_prior = (1.0 - (vp / max(1, len(hits)))) if vp is not None else 0.0
+                bm25_prior = (1.0 - (bp / max(1, len(hits)))) if bp is not None else 0.0
+
+                q_len = len((query or "").split())
+                if q_len <= 3:
+                    w_overlap, w_bm25, w_vec = 0.45, 0.40, 0.15
+                else:
+                    w_overlap, w_bm25, w_vec = 0.50, 0.25, 0.25
+
+                return w_overlap * overlap + w_bm25 * bm25_prior + w_vec * vec_prior
+
+            return sorted(hits, key=_score, reverse=True)
         
         # 5. Precision Reranking (LLM-based) with timeout-based skip
-        reranker = PrecisionReranker()
-        # Measure time to decide whether to run expensive reranker/graph scoring
-        reranker_timeout = float(getattr(settings, "RE_RANKER_TIMEOUT", 0.5))
-        start_t = time.monotonic()
         reranker_skipped = False
-        try:
-            # try to run reranker within timeout
-            final_hits = await asyncio.wait_for(reranker.rerank(query, fused_hits, top_n=k), timeout=reranker_timeout)
-        except Exception:
-            # on timeout or error, fall back to fused hits (best-effort)
-            final_hits = fused_hits[:k]
-            reranker_skipped = True
+        reranker_attempted = False
+        reranker_timeout = float(getattr(settings, "RE_RANKER_TIMEOUT", 0.5))
+
+        start_t = time.monotonic()
+        final_hits = []
+        if bool(getattr(settings, "RERANKER_ENABLED", True)):
+            reranker_attempted = True
+            reranker = PrecisionReranker()
+            try:
+                # try to run reranker within timeout
+                final_hits = await asyncio.wait_for(reranker.rerank(query, fused_hits, top_n=k), timeout=reranker_timeout)
+            except Exception:
+                # on timeout or error, fall back to deterministic rerank for stability
+                final_hits = _heuristic_rerank_on_skip(fused_hits)[:k]
+                reranker_skipped = True
+        else:
+            # Explicitly disabled: no skip semantics; just use deterministic ordering.
+            final_hits = _heuristic_rerank_on_skip(fused_hits)[:k]
 
         elapsed = time.monotonic() - start_t
-        # if reranker took too long, also skip graph-based scoring to keep latency bounded
-        skip_graph_due_to_time = elapsed > reranker_timeout
+        # If reranker took too long, skip graph-based scoring to keep latency bounded.
+        # Only apply this when we actually attempted the LLM reranker.
+        skip_graph_due_to_time = bool(reranker_attempted and elapsed > reranker_timeout)
 
         # 6. Parent Context Enrichment
         if include_parent:
@@ -109,6 +157,7 @@ class HybridRetriever:
         scores = []
         combined_raw_scores = []
         primary_order = primary_vector_order if primary_vector_order else []
+        any_graph_used = False
 
         # helper: overlap between two texts
         def overlap_between(a: str, b: str) -> float:
@@ -224,6 +273,8 @@ class HybridRetriever:
 
             # track whether graph contributed
             graph_used_flag = graph_score > 0.0
+            if graph_used_flag:
+                any_graph_used = True
 
             # choose adaptive weights per query and graph seed confidence
             try:
@@ -282,18 +333,49 @@ class HybridRetriever:
         elif top_score >= getattr(settings, "WEAK_CONTEXT_THRESHOLD", 0.4) or confidence_val >= 0.5:
             mode = "hybrid"
 
+        # Provide a stable label for upstream callers.
+        # Keep this intentionally coarse-grained to avoid breaking UIs/tests.
+        confidence_label = mode
+
         logger.info(f"Retrieved {len(final_hits)} docs. Confidence: {confidence_val:.3f} Mode: {mode} TopScore: {top_score}")
         logger.debug(f"Top scores: {scores}")
         logger.debug(f"Selected chunks: {[h.get('metadata',{}).get('source') for h in final_hits[:k]]}")
 
+        # Telemetry: record retrieval metrics for ops visibility
+        try:
+            user_id = getattr(self.manager, 'user_id', None)
+            query_variants_count = len(all_search_queries) if 'all_search_queries' in locals() else 0
+            vector_results_count = sum(len(v) for v in vector_results) if isinstance(vector_results, list) else 0
+            fused_count = len(fused_hits) if fused_hits is not None else 0
+            final_count = len(final_hits[:k]) if final_hits is not None else 0
+            telemetry_payload = {
+                "query_variants_count": query_variants_count,
+                "vector_results_count": vector_results_count,
+                "fused_count": fused_count,
+                "final_count": final_count,
+                "reranker_skipped": bool(reranker_skipped),
+                "reranker_attempted": bool(reranker_attempted),
+                "reranker_latency_ms": int(elapsed * 1000),
+                "graph_used": bool(any_graph_used),
+                "mode": mode,
+                "top_score": float(top_score)
+            }
+            try:
+                record_event("retrieval", telemetry_payload, user_id=user_id)
+            except Exception:
+                logger.debug("Failed to record retrieval telemetry")
+        except Exception:
+            pass
+
         return {
             "hits": final_hits[:k],
             "confidence": confidence_val,
+            "confidence_label": confidence_label,
             "confidence_reason": confidence_reason,
             "detailed_hits": detailed_hits,
             "scores": scores,
             "mode": mode,
             "top_score": top_score,
-            "graph_used": graph_used_flag,
+            "graph_used": any_graph_used,
             "reranker_skipped": reranker_skipped
         }

@@ -83,3 +83,14 @@ class Message(Base):
     
     # Relationships
     conversation = relationship("Conversation", back_populates="messages")
+
+
+class Telemetry(Base):
+    __tablename__ = "telemetry"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True)
+    document_id = Column(Integer, nullable=True)
+    event_type = Column(String(100))  # e.g., 'ingest', 'retrieve', 'rerank'
+    payload = Column(Text)  # JSON string
+    created_at = Column(DateTime, default=datetime.utcnow)

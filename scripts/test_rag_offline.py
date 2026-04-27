@@ -20,15 +20,30 @@ async def test_generation_logic():
     
     # This will trigger the real retrieval, including our new Confidence/Reranker logic
     print(f"Executing RAG (Confidence: Step 2.5, Fallback: Step 4)")
-    answer, citations, meta = await answer_with_rag(builder, topic_title, question)
-    
+    result = await answer_with_rag(builder, topic_title, question)
+    # Support dict or tuple return shapes
+    if isinstance(result, dict):
+        answer = result.get("answer", "")
+        citations = result.get("citations", [])
+        meta = {"confidence": result.get("confidence"), "source_type": result.get("source"), "confidence_reason": result.get("confidence_reason", "")}
+    elif isinstance(result, tuple):
+        if len(result) == 2:
+            answer, citations = result
+            meta = {}
+        elif len(result) >= 3:
+            answer, citations, meta = result[0], result[1], result[2]
+        else:
+            answer, citations, meta = "", [], {}
+    else:
+        answer, citations, meta = "", [], {}
+
     print("\n--- FINAL GENERATED ANSWER ---")
     print(answer)
-    print(f"\n[METADATA]: Confidence={meta.get('confidence_label')} ({meta.get('confidence')})")
-    print(f"[SOURCE TYPE]: {meta.get('source_type')}")
+    print(f"\n[METADATA]: Confidence={meta.get('confidence_label') or meta.get('confidence')} ({meta.get('confidence')})")
+    print(f"[SOURCE TYPE]: {meta.get('source_type') or meta.get('source')}")
     print("\n--- CITATIONS ---")
     for cit in citations:
-        print(f"File: {cit['file']}, Page: {cit.get('page')}")
+        print(f"File: {cit.get('file')}, Page: {cit.get('page')}")
 
 if __name__ == "__main__":
     asyncio.run(test_generation_logic())

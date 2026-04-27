@@ -61,6 +61,7 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initializedRef = useRef(false);
+  const [graphStatus, setGraphStatus] = useState<'off'|'indexing'|'active'>('off');
 
   const ALLOWED_EXTENSIONS = ["pdf", "txt", "csv", "doc", "docx"];
 
@@ -105,7 +106,30 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
     initializedRef.current = true;
     loadConversations();
     loadDocuments();
+    // initial fetch for graph status
+    fetchGraphStatus();
   }, []);
+
+  useEffect(() => {
+    // Poll graph status every 10 seconds
+    const id = setInterval(() => {
+      fetchGraphStatus();
+    }, 10000);
+    return () => clearInterval(id);
+  }, []);
+
+  const fetchGraphStatus = async () => {
+    try {
+      const res = await authenticatedFetch('/api/system/status');
+      if (res.ok) {
+        const data = await res.json();
+        const s = (data && data.graph_status) || 'off';
+        setGraphStatus(s);
+      }
+    } catch (err) {
+      console.error('Error fetching system status:', err);
+    }
+  };
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -428,7 +452,23 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
           <h1 className="text-xl font-bold text-white">
             {activeView === "chat" ? "Chat" : "Knowledge Base"}
           </h1>
-          <div className="text-sm text-slate-400">{user?.email}</div>
+          <div className="flex items-center gap-4">
+            <div className="text-sm text-slate-400">{user?.email}</div>
+            <div>
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                graphStatus === 'active'
+                  ? 'bg-emerald-500/10 text-emerald-300'
+                  : graphStatus === 'indexing'
+                  ? 'bg-amber-500/10 text-amber-300'
+                  : 'bg-slate-700/20 text-slate-400'
+              }`}>
+                <span className={`w-2 h-2 rounded-full mr-2 ${
+                  graphStatus === 'active' ? 'bg-emerald-400' : graphStatus === 'indexing' ? 'bg-amber-400' : 'bg-slate-500'
+                }`} />
+                {graphStatus === 'active' ? 'Graph Active' : graphStatus === 'indexing' ? 'Graph Indexing' : 'Graph Off'}
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Content Area */}

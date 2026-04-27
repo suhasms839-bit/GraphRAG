@@ -12,10 +12,10 @@ async function startServer() {
     (process.platform === "win32" ? "c:/python313/python.exe" : "python3");
 
   // Start the route-enabled Python FastAPI backend on port 3001.
-  const pythonProcess = spawn(pythonExecutable, ["-m", "app.api.server"], {
+  const pythonProcess = spawn(pythonExecutable, ["-m", "uvicorn", "app.api.server:app", "--host", "0.0.0.0", "--port", "8001", "--reload"], {
     stdio: "inherit",
     cwd: process.cwd(),
-    env: { ...process.env, PORT: "3001" }
+    env: { ...process.env }
   });
 
   pythonProcess.on("error", (err) => {
@@ -23,7 +23,7 @@ async function startServer() {
   });
 
   // API Proxy
-  app.use("/api", proxy("http://localhost:3001", {
+  app.use("/api", proxy("http://localhost:8001", {
     proxyReqPathResolver: (req) => "/api" + req.url,
     // Critical for file uploads: pass request body through without pre-parsing.
     parseReqBody: false

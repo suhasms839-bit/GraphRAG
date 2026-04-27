@@ -18,11 +18,20 @@ def test_multihop_generation():
     # In a real CI environment, we would seed the DB first.
     try:
         import asyncio
-        answer, citations = asyncio.run(answer_with_rag(
+        result = asyncio.run(answer_with_rag(
             builder=builder,
             topic_title="Data Communication",
             question=question,
         ))
+
+        # `answer_with_rag` currently returns a dict, but keep backward compatibility.
+        if isinstance(result, dict):
+            answer = result.get("answer", "")
+            citations = result.get("citations", [])
+        elif isinstance(result, tuple) and len(result) >= 2:
+            answer, citations = result[0], result[1]
+        else:
+            raise AssertionError(f"Unexpected answer_with_rag return shape: {type(result)}")
 
         assert answer != "No relevant content found.", "The generation should produce an answer."
         assert len(answer) > 50, "The answer should be more than 50 characters."

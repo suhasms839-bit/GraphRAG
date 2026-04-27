@@ -162,20 +162,21 @@ async def upload_document(
         # Extract text and create chunks for vector embedding (v3.0 Ingestion Pipeline)
         if extracted_text:
             pipeline = VectorIngestionPipeline(user_id=current_user.id)
-            status = await pipeline.ingest(text=extracted_text, filename=file.filename, doc_id=document.id)
-            # Persist ingestion status into Document row
             try:
-                document.ingested = bool(status.get("ok", False))
-                document.chunk_count = int(status.get("chunks", 0))
-                if status.get("errors"):
-                    document.ingest_log = "; ".join(status.get("errors"))
+                # v3 ingest returns IngestResult object
+                result = await pipeline.ingest(text=extracted_text, filename=file.filename, doc_id=document.id)
+                if result:
+                    document.ingested = True
+                    document.chunk_count = result.chunks
                 else:
-                    document.ingest_log = None
-                db.add(document)
-                db.commit()
-                db.refresh(document)
+                    document.ingested = False
             except Exception as ex:
-                logger.error(f"Failed to persist ingestion status for document {document.id}: {ex}")
+                logger.error(f"Ingestion failed for document {document.id}: {ex}")
+                document.ingest_log = str(ex)
+            
+            db.add(document)
+            db.commit()
+            db.refresh(document)
 
         return DocumentResponse.from_orm(document)
         
