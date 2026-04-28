@@ -69,8 +69,13 @@ interface DashboardPageProps {
 }
 
 // SourceNode Component
-const SourceNode: React.FC<{ citation: Citation; index: number }> = ({ citation, index }) => {
+const SourceNode: React.FC<{ citation: Citation; index: number; detailedHits?: DetailedHit[] }> = ({ citation, index, detailedHits }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Find parent context from detailed hits if available
+  const parentContext = citation.parent_context || 
+    (detailedHits && detailedHits[index]?.parent_context) || 
+    undefined;
 
   return (
     <motion.div
@@ -95,10 +100,10 @@ const SourceNode: React.FC<{ citation: Citation; index: number }> = ({ citation,
             exit={{ opacity: 0, height: 0 }}
             className="mt-2 p-3 bg-slate-800/50 border border-slate-700/50 rounded-lg text-xs text-slate-300 max-w-md"
           >
-            {citation.parent_context && (
+            {parentContext && (
               <div className="mb-2">
                 <div className="font-medium text-slate-200 mb-1">Parent Context:</div>
-                <div className="text-slate-400 italic">{citation.parent_context}</div>
+                <div className="text-slate-400 italic">{parentContext}</div>
               </div>
             )}
             {citation.content && (
@@ -163,6 +168,22 @@ const LogicBadge: React.FC<{ message: Message }> = ({ message }) => {
       )}
     </div>
   );
+};
+
+// Helper function to parse message data from backend
+const parseMessage = (msg: any): Message => {
+  return {
+    id: msg.id,
+    role: msg.role,
+    content: msg.content,
+    citations: msg.citations ? JSON.parse(msg.citations) : [],
+    key_points: msg.key_points ? JSON.parse(msg.key_points) : [],
+    confidence: msg.confidence ? parseFloat(msg.confidence) : undefined,
+    confidence_label: msg.confidence,
+    mode: msg.mode as "strong" | "hybrid" | "fallback",
+    graph_used: msg.graph_used,
+    detailed_hits: msg.detailed_hits ? JSON.parse(msg.detailed_hits) : []
+  };
 };
 
 export default function DashboardPage({ user, token, onLogout }: DashboardPageProps) {
@@ -264,9 +285,14 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
       }
       if (response.ok) {
         const data = await response.json();
-        setConversations(data.conversations);
-        if (data.conversations.length > 0 && !currentConversation) {
-          setCurrentConversation(data.conversations[0]);
+        // Parse messages in each conversation
+        const parsedConversations = data.conversations.map((conv: any) => ({
+          ...conv,
+          messages: conv.messages.map(parseMessage)
+        }));
+        setConversations(parsedConversations);
+        if (parsedConversations.length > 0 && !currentConversation) {
+          setCurrentConversation(parsedConversations[0]);
         }
       }
     } catch (err) {
@@ -325,7 +351,12 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
           }
           if (convResponse.ok) {
             const convData = await convResponse.json();
-            setCurrentConversation(convData);
+            // Parse messages in the conversation
+            const parsedConversation = {
+              ...convData,
+              messages: convData.messages.map(parseMessage)
+            };
+            setCurrentConversation(parsedConversation);
           }
         }
       }
@@ -637,7 +668,7 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
                             <div className="text-xs text-slate-400 mb-2 font-medium">Sources:</div>
                             <div className="flex flex-wrap">
                               {msg.citations.map((citation, index) => (
-                                <SourceNode key={index} citation={citation} index={index} />
+                                <SourceNode key={index} citation={citation} index={index} detailedHits={msg.detailed_hits} />
                               ))}
                             </div>
                           </div>
