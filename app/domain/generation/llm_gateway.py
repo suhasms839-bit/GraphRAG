@@ -4,6 +4,106 @@ import urllib.request
 from typing import List, Dict, Any, Optional
 from app.core.config import settings
 
+def call_ollama_text(
+    prompt: str,
+    temperature: float = 0.2,
+    max_tokens: int = 2000,
+    **kwargs,
+) -> Optional[str]:
+    """Call Ollama API for text generation."""
+    try:
+        url = f"{settings.OLLAMA_BASE_URL}/api/generate"
+        
+        body = {
+            "model": settings.OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+            }
+        }
+        
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        
+        with urllib.request.urlopen(req, timeout=settings.OLLAMA_TIMEOUT) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+            return payload.get("response", "").strip()
+            
+    except Exception as e:
+        return f"Ollama Error: {str(e)}"
+
+def call_ollama_chat(
+    messages: List[Dict[str, Any]],
+    temperature: float = 0.2,
+    max_tokens: int = 2000,
+    **kwargs,
+) -> Dict[str, Any]:
+    """Call Ollama API for chat completion."""
+    try:
+        url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+        
+        # Convert messages to Ollama format
+        ollama_messages = []
+        for msg in messages:
+            if msg.get("role") == "function":
+                # Handle function responses
+                for part in msg.get("parts", []):
+                    if "functionResponse" in part:
+                        ollama_messages.append({
+                            "role": "tool",
+                            "content": json.dumps(part["functionResponse"]["response"])
+                        })
+            else:
+                content = ""
+                if "parts" in msg:
+                    for part in msg["parts"]:
+                        if "text" in part:
+                            content += part["text"]
+                        elif "functionCall" in part:
+                            content += f"Function call: {json.dumps(part['functionCall'])}"
+                else:
+                    content = msg.get("content", "")
+                
+                ollama_messages.append({
+                    "role": msg.get("role", "user"),
+                    "content": content
+                })
+        
+        body = {
+            "model": settings.OLLAMA_MODEL,
+            "messages": ollama_messages,
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+            }
+        }
+        
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        
+        with urllib.request.urlopen(req, timeout=settings.OLLAMA_TIMEOUT) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+            message = payload.get("message", {})
+            
+            # Convert Ollama response to Gemini-like format for compatibility
+            return {
+                "parts": [{"text": message.get("content", "")}]
+            }
+            
+    except Exception as e:
+        return {"error": f"Ollama Error: {str(e)}"}
+
 def call_gemini_text(
     prompt: str,
     temperature: float = 0.2,
@@ -11,6 +111,10 @@ def call_gemini_text(
     response_mime_type: Optional[str] = None,
     **kwargs,
 ) -> Optional[str]:
+    # Use Ollama if configured, otherwise fallback to Gemini
+    if settings.USE_OLLAMA:
+        return call_ollama_text(prompt, temperature, max_tokens, **kwargs)
+    
     api_key = settings.GEMINI_API_KEY
     if not api_key:
         return "GEMINI_API_KEY not configured."
@@ -52,6 +156,11 @@ def call_gemini_with_tools(
     temperature: float = 0.0,
     **kwargs,
 ) -> Dict[str, Any]:
+    # Use Ollama for basic chat if configured and no tools are needed
+    if settings.USE_OLLAMA and not tools:
+        return call_ollama_chat(messages, temperature, **kwargs)
+    
+    # Fall back to Gemini for tool calling or when Ollama is disabled
     api_key = settings.GEMINI_API_KEY
     if not api_key:
         return {"error": "GEMINI_API_KEY not configured."}

@@ -36,7 +36,13 @@ class AgenticOrchestrator:
         if not semantic_hits:
             # Fallback to general knowledge
             answer = f"Based on general knowledge: {question} requires specific context from uploaded documents. Please upload relevant materials for a detailed answer."
-            return format_final_output(answer, [], 0.1, "General Knowledge")
+            base_output = format_final_output(answer, [], 0.1, "General Knowledge")
+            return {
+                **base_output,
+                "mode": retrieval_resp.get("mode", "fallback"),
+                "graph_used": retrieval_resp.get("graph_used", False),
+                "detailed_hits": retrieval_resp.get("detailed_hits", [])
+            }
         
         # Continue with existing logic but with retrieved context
         context_text = "\n\n".join([f"Evidence: {h.get('content', '')}" for h in semantic_hits])
@@ -91,95 +97,120 @@ Your goal is to transform the provided context into a precise, verifiable, and g
                         citations = structured_data.get("citations", [])
                         confidence = structured_data.get("confidence", 0.5)
                         source = structured_data.get("source", "")
-                        return format_final_output(ans, citations, confidence, source)
+                        base_output = format_final_output(ans, citations, confidence, source)
+                        return {
+                            **base_output,
+                            "mode": retrieval_resp.get("mode", "strong"),
+                            "graph_used": retrieval_resp.get("graph_used", False),
+                            "detailed_hits": retrieval_resp.get("detailed_hits", [])
+                        }
                 except Exception as e:
                     logger.warning(f"Failed to parse direct synthesis: {e}")
 
         except Exception as e:
             logger.error(f"Error in Direct Synthesis: {e}")
 
-        # 3. Agentic Multi-Hop Loop (Original Logic)
-        messages = [
-            {
-                "role": "user",
-                "parts": [{"text": prompt_text}]
-            }
-        ]
-        
-        # Fallback to agentic approach if direct call fails
-        context_accumulator = semantic_hits
-        max_iterations = 2 # Reduced from 3 to save tokens/avoid 429
-        
-        for i in range(max_iterations):
-            try:
-                # Ensure tools are passed in the correct format for Gemini v1beta
-                # The API expects a list of tool objects, each with a 'function_declarations' list
-                response = call_gemini_with_tools(messages, tools=AGENT_TOOLS)
-                
-                if isinstance(response, dict) and "error" in response:
-                    # Log the full error for debugging
-                    logger.error(f"Gemini API Error in loop: {response['error']}")
-                    if "429" in str(response["error"]):
-                        # CRITICAL: If 429, don't just return error, return the best effort based on context
-                        return format_final_output(
-                            f"I can explain {question} based on retrieved documents: " + " ".join([h.get('content', '')[:200] for h in semantic_hits[:2]]),
-                            [],
-                            0.5,
-                            "Retrieved documents"
-                        )
-                    return format_final_output(f"Agent Error: {response['error']}", [], 0.0, "")
-                
-                messages.append(response)
-                
-                parts = response.get("parts", [])
-                tool_calls = [p.get("functionCall") for p in parts if p.get("functionCall")]
-                
-                if not tool_calls:
-                    # Final answer extraction
-                    final_text = "".join([p.get("text", "") for p in parts])
-                    try:
-                        structured_data = extract_json_object_text(final_text)
-                        if structured_data:
-                            ans = structured_data.get("answer", "")
-                            citations = structured_data.get("citations", [])
-                            confidence = structured_data.get("confidence", 0.5)
-                            source = structured_data.get("source", "")
-                            return format_final_output(ans, citations, confidence, source)
-                    except:
-                        # Best effort if JSON fails
-                        return format_final_output(final_text[:500], [], 0.4, "Retrieved documents")
-                
-                tool_responses = []
-                for call in tool_calls:
-                    name = call["name"]
-                    args = call.get("args", {})
+        # 3. Agentic Multi-Hop Loop (Only for Gemini with tool support)
+        from app.core.config import settings
+        if not settings.USE_OLLAMA:
+            messages = [
+                {
+                    "role": "user",
+                    "parts": [{"text": prompt_text}]
+                }
+            ]
+            
+            # Fallback to agentic approach if direct call fails
+            context_accumulator = semantic_hits
+            max_iterations = 2 # Reduced from 3 to save tokens/avoid 429
+            
+            for i in range(max_iterations):
+                try:
+                    # Ensure tools are passed in the correct format for Gemini v1beta
+                    # The API expects a list of tool objects, each with a 'function_declarations' list
+                    response = call_gemini_with_tools(messages, tools=AGENT_TOOLS)
                     
-                    result = await self.execute_tool(name, args, topic_title, context_accumulator)
+                    if isinstance(response, dict) and "error" in response:
+                        # Log the full error for debugging
+                        logger.error(f"Gemini API Error in loop: {response['error']}")
+                        if "429" in str(response["error"]):
+                            # CRITICAL: If 429, don't just return error, return the best effort based on context
+                            return format_final_output(
+                                f"I can explain {question} based on retrieved documents: " + " ".join([h.get('content', '')[:200] for h in semantic_hits[:2]]),
+                                [],
+                                0.5,
+                                "Retrieved documents"
+                            )
+                        return format_final_output(f"Agent Error: {response['error']}", [], 0.0, "")
                     
-                    tool_responses.append({
-                        "functionResponse": {
-                            "name": name,
-                            "response": {"result": result}
-                        }
+                    messages.append(response)
+                    
+                    parts = response.get("parts", [])
+                    tool_calls = [p.get("functionCall") for p in parts if p.get("functionCall")]
+                    
+                    if not tool_calls:
+                        # Final answer extraction
+                        final_text = "".join([p.get("text", "") for p in parts])
+                        try:
+                            structured_data = extract_json_object_text(final_text)
+                            if structured_data:
+                                ans = structured_data.get("answer", "")
+                                citations = structured_data.get("citations", [])
+                                confidence = structured_data.get("confidence", 0.5)
+                                source = structured_data.get("source", "")
+                                base_output = format_final_output(ans, citations, confidence, source)
+                                return {
+                                    **base_output,
+                                    "mode": retrieval_resp.get("mode", "strong"),
+                                    "graph_used": retrieval_resp.get("graph_used", False),
+                                    "detailed_hits": retrieval_resp.get("detailed_hits", [])
+                                }
+                        except:
+                            # Best effort if JSON fails
+                            base_output = format_final_output(final_text[:500], [], 0.4, "Retrieved documents")
+                            return {
+                                **base_output,
+                                "mode": retrieval_resp.get("mode", "fallback"),
+                                "graph_used": retrieval_resp.get("graph_used", False),
+                                "detailed_hits": retrieval_resp.get("detailed_hits", [])
+                            }
+                    
+                    tool_responses = []
+                    for call in tool_calls:
+                        name = call["name"]
+                        args = call.get("args", {})
+                        
+                        result = await self.execute_tool(name, args, topic_title, context_accumulator)
+                        
+                        tool_responses.append({
+                            "functionResponse": {
+                                "name": name,
+                                "response": {"result": result}
+                            }
+                        })
+                    
+                    messages.append({
+                        "role": "function",
+                        "parts": tool_responses
                     })
-                
-                messages.append({
-                    "role": "function",
-                    "parts": tool_responses
-                })
 
-            except Exception as e:
-                logger.error(f"Iteration {i} error: {e}")
-                break
+                except Exception as e:
+                    logger.error(f"Iteration {i} error: {e}")
+                    break
         
         # 4. Ultimate Fallback (If loop finished/failed without structured_data)
-        # 4. Ultimate Fallback (If loop finished/failed without structured_data)
-        return format_final_output(
+        base_output = format_final_output(
             f"Completed research on {question}. Most relevant excerpts: " + " ".join([h.get('content', '')[:150] for h in semantic_hits[:3]]),
             [],
             0.3,
             "Retrieved documents"
         )
+        return {
+            **base_output,
+            "mode": retrieval_resp.get("mode", "fallback"),
+            "graph_used": retrieval_resp.get("graph_used", False),
+            "detailed_hits": retrieval_resp.get("detailed_hits", [])
+        }
 
     async def execute_tool(self, name: str, args: Dict[str, Any], topic_title: str, context_accumulator: List[Dict[str, Any]]) -> str:
         if name == "local_search":

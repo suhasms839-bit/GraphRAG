@@ -79,6 +79,9 @@ class Message(Base):
     citations = Column(Text, nullable=True)  # JSON string
     key_points = Column(Text, nullable=True)  # JSON string
     confidence = Column(String(50), nullable=True)
+    mode = Column(String(50), nullable=True)
+    graph_used = Column(Boolean, default=False)
+    detailed_hits = Column(Text, nullable=True)  # JSON string
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships

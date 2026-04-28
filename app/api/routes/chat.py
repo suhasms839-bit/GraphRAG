@@ -148,7 +148,10 @@ async def send_message(
             citations=citations,
             confidence=confidence_rate,
             confidence_label=confidence_label,
-            source_type=source_type
+            source_type=source_type,
+            mode=result.get("mode", "strong"),
+            graph_used=result.get("graph_used", False),
+            detailed_hits=result.get("detailed_hits", [])
         )
 
         # Store assistant message in DB (store only cleaned answer)
@@ -157,7 +160,10 @@ async def send_message(
             role="assistant",
             content=cleaned_answer,
             citations=json.dumps(citations),
-            confidence=confidence_label
+            confidence=confidence_label,
+            mode=result.get("mode", "strong"),
+            graph_used=result.get("graph_used", False),
+            detailed_hits=json.dumps(result.get("detailed_hits", []))
         )
         db.add(bot_message)
         db.commit()

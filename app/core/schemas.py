@@ -61,6 +61,9 @@ class MessageResponse(BaseModel):
     citations: Optional[str]
     key_points: Optional[str]
     confidence: Optional[str]
+    mode: Optional[str]
+    graph_used: Optional[bool]
+    detailed_hits: Optional[str]
     created_at: datetime
     
     class Config:
@@ -96,6 +99,9 @@ class ChatResponse(BaseModel):
     confidence: float
     confidence_label: Optional[str] = "Medium"
     source_type: Optional[str] = "Retrieved documents"
+    mode: Optional[str] = "strong"
+    graph_used: Optional[bool] = False
+    detailed_hits: Optional[List[dict]] = []
 
 # Database setup request
 class InitializeDBRequest(BaseModel):

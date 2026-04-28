@@ -20,9 +20,30 @@ interface Message {
   id: number;
   role: "user" | "assistant";
   content: string;
-  citations?: string[];
+  citations?: Citation[];
   key_points?: string[];
   confidence?: number;
+  confidence_label?: string;
+  mode?: "strong" | "hybrid" | "fallback";
+  graph_used?: boolean;
+  detailed_hits?: DetailedHit[];
+}
+
+interface Citation {
+  id?: string;
+  source?: string;
+  page?: number;
+  content?: string;
+  parent_context?: string;
+}
+
+interface DetailedHit {
+  index: number;
+  content: string;
+  metadata: any;
+  score: number;
+  graph_score: number;
+  parent_context?: string;
 }
 
 interface Conversation {
@@ -46,6 +67,103 @@ interface DashboardPageProps {
   token: string;
   onLogout: () => void;
 }
+
+// SourceNode Component
+const SourceNode: React.FC<{ citation: Citation; index: number }> = ({ citation, index }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="inline-block mr-2 mb-2"
+    >
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="px-3 py-1.5 bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600/50 rounded-lg text-xs text-slate-300 hover:text-slate-200 transition-all flex items-center gap-1.5"
+      >
+        <File className="w-3 h-3" />
+        <span className="font-medium">{citation.source || `Source ${index + 1}`}</span>
+        {citation.page && <span className="text-slate-400">p.{citation.page}</span>}
+      </button>
+
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mt-2 p-3 bg-slate-800/50 border border-slate-700/50 rounded-lg text-xs text-slate-300 max-w-md"
+          >
+            {citation.parent_context && (
+              <div className="mb-2">
+                <div className="font-medium text-slate-200 mb-1">Parent Context:</div>
+                <div className="text-slate-400 italic">{citation.parent_context}</div>
+              </div>
+            )}
+            {citation.content && (
+              <div>
+                <div className="font-medium text-slate-200 mb-1">Content:</div>
+                <div className="text-slate-400">{citation.content}</div>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+};
+
+// Logic Badge Component
+const LogicBadge: React.FC<{ message: Message }> = ({ message }) => {
+  if (message.role === "user") return null;
+
+  const getBadgeConfig = () => {
+    const confidence = message.confidence || 0;
+    const mode = message.mode;
+    const graphUsed = message.graph_used;
+
+    if (confidence > 0.7 || mode === "strong") {
+      return {
+        label: "Source-Verified",
+        color: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
+        icon: "✓"
+      };
+    } else if ((confidence >= 0.4 && confidence <= 0.7) || mode === "hybrid") {
+      return {
+        label: "Inferred from Context",
+        color: "bg-amber-500/10 text-amber-300 border-amber-500/30",
+        icon: "~"
+      };
+    } else if (graphUsed) {
+      return {
+        label: "Relational Insight",
+        color: "bg-purple-500/10 text-purple-300 border-purple-500/30",
+        icon: "🔗"
+      };
+    }
+
+    return {
+      label: "General Knowledge",
+      color: "bg-slate-500/10 text-slate-300 border-slate-500/30",
+      icon: "?"
+    };
+  };
+
+  const config = getBadgeConfig();
+
+  return (
+    <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${config.color}`}>
+      <span className="mr-1">{config.icon}</span>
+      {config.label}
+      {message.confidence && (
+        <span className="ml-1 opacity-75">
+          ({Math.round((message.confidence || 0) * 100)}%)
+        </span>
+      )}
+    </div>
+  );
+};
 
 export default function DashboardPage({ user, token, onLogout }: DashboardPageProps) {
   const [activeView, setActiveView] = useState<"chat" | "documents">("chat");
@@ -508,7 +626,22 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
                             : "bg-slate-700 text-slate-100 rounded-tl-none"
                         }`}
                       >
+                        {msg.role === "assistant" && (
+                          <div className="mb-3">
+                            <LogicBadge message={msg} />
+                          </div>
+                        )}
                         <p className="text-sm leading-relaxed">{msg.content}</p>
+                        {msg.role === "assistant" && msg.citations && msg.citations.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-slate-600/30">
+                            <div className="text-xs text-slate-400 mb-2 font-medium">Sources:</div>
+                            <div className="flex flex-wrap">
+                              {msg.citations.map((citation, index) => (
+                                <SourceNode key={index} citation={citation} index={index} />
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </motion.div>
                   ))}
