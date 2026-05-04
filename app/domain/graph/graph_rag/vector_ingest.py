@@ -29,7 +29,8 @@ class IngestResult:
 class VectorIngestionPipeline:
     def __init__(self, user_id: int):
         self.user_id = user_id
-        self.persist_directory = f"./chroma_db/user_{user_id}"
+        base_dir = settings.CHROMA_PERSIST_DIR
+        self.persist_directory = os.path.join(base_dir, f"user_{user_id}")
         self.embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
         self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=200, add_start_index=True)
 

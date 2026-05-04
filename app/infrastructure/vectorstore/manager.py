@@ -31,13 +31,9 @@ class VectorStoreManager:
 
     def get_vectorstore(self) -> Chroma:
         try:
-            # FIX: Ensure explicitly using ChromaDB PersistentClient to avoid 'RustBindingsAPI' errors seen on some Windows envs
-            import chromadb
-            # Use absolute path for Windows reliability
             abs_persist_directory = os.path.abspath(self.persist_directory)
-            client = chromadb.PersistentClient(path=abs_persist_directory)
             return Chroma(
-                client=client,
+                persist_directory=abs_persist_directory,
                 embedding_function=self.embeddings,
                 collection_name="langchain"
             )

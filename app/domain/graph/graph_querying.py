@@ -46,7 +46,11 @@ def get_neo4j_driver() -> Optional[Any]:
     time.sleep(wait_seconds)
 
     try:
-        driver = GraphDatabase.driver(settings.NEO4J_URI, auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD))
+        driver = GraphDatabase.driver(
+            settings.NEO4J_URI, 
+            auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD),
+            max_connection_lifetime=200 # Prevent stale connections from causing 10054 errors
+        )
         # Verify connectivity (will raise if cannot connect)
         try:
             driver.verify_connectivity()
