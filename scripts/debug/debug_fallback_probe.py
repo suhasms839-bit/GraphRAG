@@ -34,4 +34,3 @@ for d in docs:
 # Manual chunk rows
 chunks = db.query(DocumentChunk).join(Document).filter(Document.user_id == 49).all()
 print('DB chunk rows count:', len(chunks))
-

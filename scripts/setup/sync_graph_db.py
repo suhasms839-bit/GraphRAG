@@ -55,7 +55,6 @@ async def populate_neo4j_from_chroma(user_id: int):
         print(f"Processing chunk {i+1}/{len(documents)}: {chunk_id}")
         
         # Extract Entities & Relationships using LLM
-        # This uses the GraphRAGIndexer.extract_entities_and_relationships (Step 1.2)
         extraction = await indexer.extract_entities_and_relationships(doc_text)
         
         entities = extraction.get("entities", [])
@@ -101,5 +100,4 @@ async def populate_neo4j_from_chroma(user_id: int):
     print(f"--- Neo4j Population Complete for User {user_id} ---")
 
 if __name__ == "__main__":
-    # Target User 48 where we know data exists
     asyncio.run(populate_neo4j_from_chroma(48))

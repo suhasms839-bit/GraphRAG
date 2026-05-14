@@ -147,7 +147,7 @@ async def upload_document(
             filename=file.filename,
             file_path=file_path,
             file_size=file_size,
-            mime_type=file.content_type,
+            mime_type=file.content_type or f"application/{extension}" or "application/octet-stream",
             ingested=False,
             chunk_count=0,
             ingest_log=None
@@ -174,6 +174,13 @@ async def upload_document(
                 logger.error(f"Ingestion failed for document {document.id}: {ex}")
                 document.ingest_log = str(ex)
             
+            db.add(document)
+            db.commit()
+            db.refresh(document)
+
+        # Ensure mime_type is a string to satisfy response schema
+        if not document.mime_type:
+            document.mime_type = f"application/{extension}" if extension else "application/octet-stream"
             db.add(document)
             db.commit()
             db.refresh(document)

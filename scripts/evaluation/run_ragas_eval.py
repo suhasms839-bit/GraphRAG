@@ -56,13 +56,11 @@ async def run_ragas_evaluation():
                 answer = str(response)
             
             # Extract retrieved context for faithfulness/recall
-            # Fix: retriever.retrieve returns a dictionary {'hits': [...], 'confidence': ...}
             retrieval_resp = await orchestrator.retriever.retrieve(case['question'], topic_title=case['topic'], k=5)
             hits = retrieval_resp.get("hits", [])
             context = "\n\n".join([h.get('content', '') for h in hits])
             
             # 3. Score using RAGEvaluator (LLM-as-a-judge)
-            # Add delay to avoid rate limits
             await asyncio.sleep(2)
             faithfulness = await evaluator.evaluate_faithfulness(answer, context)
             await asyncio.sleep(2)
