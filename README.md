@@ -2,6 +2,39 @@
 
 A modern AI-powered learning and retrieval system that combines **Graph-based Retrieval-Augmented Generation (GraphRAG)** with a conversational interface for intelligent document analysis and knowledge discovery.
 
+> **Status**: ✅ Fully functional. Document ingestion, semantic search, and LLM-powered Q&A with source citations working end-to-end.
+
+---
+
+## 🎬 Demo
+
+### Live Screenshot (System Running)
+The platform includes a full-stack RAG system with:
+- **User Authentication** - Secure login/signup
+- **Document Management** - Upload and process documents
+- **Intelligent Chat Interface** - Multi-turn conversations with source verification
+- **Citation System** - All answers include linked sources and page numbers
+
+**Test Account (Pre-configured):**
+```
+Email: suhasms839@gmail.com
+Password: pass
+```
+
+### Quick Test (2 minutes)
+
+1. Start the system: `npm run dev`
+2. Open http://localhost:5173 (or http://localhost:3000)
+3. Login with test account above
+4. Try these questions on pre-loaded documents:
+   - "What material is used for the Aether-Core housing?"
+   - "What are the main challenges in the project?"
+   - "Who is the lead engineer for the Prism Squad?"
+
+**Expected Output:** AI generates cited answers pulling from uploaded documents with source verification ✓
+
+---
+
 ## Features
 
 - 📚 **Document Upload & Ingestion**: Upload text, PDF, and other documents for intelligent processing
@@ -49,7 +82,7 @@ pip install -r backend/requirements.txt
 Create `.env.local` in the project root:
 
 ```env
-# API Keys
+# API Keys (Required)
 GEMINI_API_KEY=your_gemini_api_key_here
 
 # Ollama (optional, for local LLMs)
@@ -66,16 +99,29 @@ NEO4J_PASSWORD=password
 
 ### 3. Start the Application
 
+#### Option A: Full Stack (Recommended for Development)
 ```bash
-# Start both backend (FastAPI) and frontend (Vite) together
+# Starts both FastAPI backend + Express proxy + Vite frontend
 npm run dev
 ```
-
-The app will be available at **http://localhost:3000**
-
-- Frontend: http://localhost:3000
+- Frontend: http://localhost:3000 (or http://localhost:5173 for standalone)
 - Backend API: http://localhost:8001
 - API Docs: http://localhost:8001/docs
+
+#### Option B: Individual Servers
+
+**Terminal 1 - Backend (FastAPI):**
+```bash
+python app/api/server.py
+```
+Backend runs on http://localhost:8001
+
+**Terminal 2 - Frontend (Vite):**
+```bash
+cd frontend
+npm run dev
+```
+Frontend runs on http://localhost:5173
 
 ---
 
@@ -295,9 +341,70 @@ For detailed Ollama setup, see [OLLAMA_SETUP.md](OLLAMA_SETUP.md).
 
 ## Deployment
 
+### GitHub Repository Setup
+
+1. **Create GitHub repository:**
+   ```bash
+   # Initialize and push to GitHub (if not already done)
+   git add .
+   git commit -m "Initial commit: GraphRAG Learning Platform - Full stack RAG system with document upload, retrieval, and chat"
+   git branch -M main
+   git remote add origin https://github.com/YOUR_USERNAME/graphrag-learning-platform.git
+   git push -u origin main
+   ```
+
+2. **Branching Strategy:**
+   - `main` - Production-ready releases
+   - `graphiti` - Development branch (current)
+   - Feature branches - `feature/feature-name`
+
+### Docker Deployment
+
+Create `docker-compose.yml`:
+```yaml
+version: '3.8'
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8001:8001"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - DATABASE_URL=sqlite:///./test.db
+    volumes:
+      - ./chroma_db:/app/chroma_db
+      - ./uploads:/app/uploads
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+```
+
+Deploy with:
+```bash
+docker-compose up -d
+```
+
 ### Building for Production
 
 ```bash
+# Build frontend bundle
+npm run build
+
+# Backend deployment (see Dockerfile.backend)
+# For production, consider running:
+# - Vite build output on a static file server (nginx, etc.)
+# - FastAPI backend on a ASGI server (gunicorn, hypercorn)
+```
+
+---
 # Build frontend bundle
 npm run build
 
@@ -315,10 +422,19 @@ Create `Dockerfile` and `docker-compose.yml` for containerized deployment.
 
 ## Contributing
 
-1. Keep changes modular and focused
-2. Add tests under `tests/` for new features
-3. Use manual scripts under `scripts/` for evaluation
-4. Update this README if you change architecture or key workflows
+1. Create a feature branch: `git checkout -b feature/your-feature`
+2. Make changes and test locally: `npm run dev` + manual testing
+3. Add tests under `tests/` for new features
+4. Commit with clear messages: `git commit -m "Add feature: description"`
+5. Push and create a Pull Request to `main` branch
+
+### Code Organization
+
+- **Backend logic**: `app/domain/` (agents, generation, retrieval, graph)
+- **API routes**: `app/api/routes/` (one file per resource: auth, chat, documents)
+- **Core utilities**: `app/core/` (config, security, logging, database models)
+- **Tests**: `tests/` (pytest, one file per module)
+- **Scripts**: `scripts/` (organized by debug, evaluation, integration, setup)
 
 ---
 
@@ -327,11 +443,55 @@ Create `Dockerfile` and `docker-compose.yml` for containerized deployment.
 - **Gemini API**: https://ai.google.dev
 - **FastAPI Docs**: https://fastapi.tiangolo.com
 - **React Docs**: https://react.dev
+- **Vite**: https://vitejs.dev
 - **LangChain**: https://python.langchain.com
-- **RAGAS**: https://docs.ragas.io
+- **RAGAS Evaluation**: https://docs.ragas.io
+- **Chroma Vector DB**: https://docs.trychroma.com
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| 404 on frontend | Ensure `frontend/src/` exists with `main.tsx` and `App.tsx` |
+| Backend connection fails | Check Python env activated: `.venv\Scripts\activate`, port 8001 free |
+| Document upload fails | Verify file format (txt, pdf), check `uploads/` folder writable |
+| Vector search empty | Upload documents first, verify `chroma_db/` exists, run `scripts/debug/debug_retrieval_run.py` |
+| 500 on signup | Check backend logs, ensure `.env.local` has valid GEMINI_API_KEY |
+| Port already in use | Kill existing processes: `netstat -ano \| findstr :8001` (Windows) |
+
+### Debug Scripts
+
+```bash
+# Check system health
+python scripts/debug/check_ragas_preflight.py
+
+# Inspect vector database
+python scripts/debug/db_inspect.py
+
+# Test retrieval pipeline
+python scripts/debug/debug_retrieval_run.py
+
+# Run end-to-end test
+python test_system_e2e.py
+```
 
 ---
 
 ## License
 
-See LICENSE file for details.
+MIT License - See LICENSE file for details.
+
+---
+
+## Project Stats
+
+- **Backend**: FastAPI + SQLAlchemy + LangChain
+- **Frontend**: React 19 + Vite 6 + TypeScript
+- **Vector DB**: Chroma (persistent local storage)
+- **LLM**: Gemini API (primary) + Ollama (fallback)
+- **Python**: 3.11+
+- **Node**: 18+

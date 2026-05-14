@@ -1,8 +1,58 @@
+# Node/npm
 node_modules/
 build/
 dist/
 coverage/
-.DS_Store
-*.log
+.npm
+
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.hypothesis/
+
+# Environment & Secrets
 .env*
 !.env.example
+.env.local
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*.vscode
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+*.pid
+
+# Database & Storage (local dev only, don't commit)
+*.db
+*.sqlite
+*.sqlite3
+chroma_db/
+uploads/
+
+# Build artifacts
+.cache/
+dist/
+build/
+
+# Temporary files
+*.tmp
+*.temp
+tmp_*
+.turbo/
