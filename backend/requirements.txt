@@ -20,3 +20,5 @@ ragas
 datasets
 pandas
 numpy
+# Optional: MCP / Gmail helper tool. Keep optional so runtime isn't required.
+# Example: an npm-based MCP can be invoked via `npx @shinzolabs/gmail-mcp`.

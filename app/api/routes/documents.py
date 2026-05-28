@@ -2,6 +2,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Header
 from sqlalchemy.orm import Session
 import fitz
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.models import User, Document
 from app.core.schemas import DocumentResponse, DocumentListResponse
@@ -9,11 +10,14 @@ from app.core.security import verify_token
 from app.core.logging import logger
 from app.infrastructure.vectorstore.manager import VectorStoreManager
 from app.domain.graph.graph_rag.vector_ingest import VectorIngestionPipeline
+from app.core.config import settings
+from app.core.guards import ingest_semaphore
+import asyncio
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 # Document storage directory
-UPLOAD_DIR = "./uploads"
+UPLOAD_DIR = settings.UPLOADS_DIR
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
@@ -117,6 +121,10 @@ async def upload_document(
     try:
         contents = await file.read()
         file_size = len(contents)
+
+        # Enforce upload size limit
+        if file_size > settings.MAX_UPLOAD_SIZE_BYTES:
+            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=f"File exceeds max size of {settings.MAX_UPLOAD_SIZE_BYTES} bytes")
         
         # Create user-specific directory
         user_dir = os.path.join(UPLOAD_DIR, str(current_user.id))
@@ -156,8 +164,20 @@ async def upload_document(
         db.add(document)
         db.commit()
         db.refresh(document)
-
         logger.info(f"Document uploaded: {file.filename} by user {current_user.id}")
+
+        # Trigger ingestion (best-effort) but gate concurrency
+        try:
+            pipeline = VectorIngestionPipeline()
+            # If ingestion is async-capable, run concurrently with semaphore
+            async def _ingest():
+                async with ingest_semaphore:
+                    await asyncio.to_thread(pipeline.ingest, document.id, current_user.id)
+
+            # Schedule background ingestion without blocking response
+            asyncio.create_task(_ingest())
+        except Exception as e:
+            logger.warning(f"Ingestion scheduled failed: {e}")
 
         # Extract text and create chunks for vector embedding (v3.0 Ingestion Pipeline)
         if extracted_text:

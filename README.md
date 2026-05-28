@@ -94,26 +94,26 @@ Entity Extraction (Automated via LLM)
 
 ## ✨ Core Features
 
-| Feature | Capability | Tech Stack |
-|---------|-----------|-----------|
-| **Hybrid Retrieval** | Dual-path querying (semantic + graph-based) | Chroma + Neo4j |
-| **Entity Extraction** | Automated extraction of `Chunk` → `Entity` → `Community` nodes | LangChain + Gemini |
-| **LLM Orchestration** | Dynamic routing: Gemini 1.5 Pro (online) / Ollama (offline) | FastAPI + LangChain |
-| **Multi-User Isolation** | Per-user vector stores & knowledge graphs | SQLAlchemy + Auth |
-| **Citation Tracking** | Full provenance: source document, page, confidence score | RAG Pipeline |
-| **RAG Evaluation** | RAGAS metrics: Faithfulness, Relevance, Context Recall | Python Integration |
+| Feature                  | Capability                                                     | Tech Stack          |
+| ------------------------ | -------------------------------------------------------------- | ------------------- |
+| **Hybrid Retrieval**     | Dual-path querying (semantic + graph-based)                    | Chroma + Neo4j      |
+| **Entity Extraction**    | Automated extraction of `Chunk` → `Entity` → `Community` nodes | LangChain + Gemini  |
+| **LLM Orchestration**    | Dynamic routing: Gemini 1.5 Pro (online) / Ollama (offline)    | FastAPI + LangChain |
+| **Multi-User Isolation** | Per-user vector stores & knowledge graphs                      | SQLAlchemy + Auth   |
+| **Citation Tracking**    | Full provenance: source document, page, confidence score       | RAG Pipeline        |
+| **RAG Evaluation**       | RAGAS metrics: Faithfulness, Relevance, Context Recall         | Python Integration  |
 
 ---
 
 ## 📋 Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| **Backend** | Python 3.11+, FastAPI, SQLAlchemy ORM |
-| **Frontend** | React 19, Vite 6, TypeScript, Tailwind CSS |
+| Layer         | Technology                                               |
+| ------------- | -------------------------------------------------------- |
+| **Backend**   | Python 3.11+, FastAPI, SQLAlchemy ORM                    |
+| **Frontend**  | React 19, Vite 6, TypeScript, Tailwind CSS               |
 | **Databases** | Neo4j Aura (Graph), ChromaDB (Vector), SQLite (Metadata) |
-| **AI/ML** | LangChain, HuggingFace Transformers, Gemini API, Ollama |
-| **DevOps** | Docker, GitHub Actions (CI/CD Ready) |
+| **AI/ML**     | LangChain, HuggingFace Transformers, Gemini API, Ollama  |
+| **DevOps**    | Docker, GitHub Actions (CI/CD Ready)                     |
 
 ### Prerequisites
 
@@ -163,6 +163,16 @@ pip install -r backend/requirements.txt
 python -c "import fastapi; import langchain; print('✅ Backend ready')"
 ```
 
+### 2.1 Database Bootstrap
+
+Run the schema bootstrap before the first production start or after a fresh database provision:
+
+```bash
+python scripts/migrations/upgrade_schema.py
+```
+
+For a real production deployment, wire this into your deploy step or replace it with Alembic-managed migrations.
+
 ### 3️⃣ Frontend Setup
 
 ```bash
@@ -199,6 +209,7 @@ WORKERS=4
 ### 5️⃣ Start Application
 
 #### Option A: Full Stack (Recommended)
+
 ```bash
 npm run dev
 # Starts: FastAPI (:8001) + Vite Frontend (:5173)
@@ -207,18 +218,21 @@ npm run dev
 #### Option B: Individual Services
 
 **Terminal 1 - Backend:**
+
 ```bash
 python app/api/server.py
 # FastAPI running on http://localhost:8001
 ```
 
 **Terminal 2 - Frontend:**
+
 ```bash
 cd frontend && npm run dev
 # Vite dev server on http://localhost:5173
 ```
 
 ✅ **System Ready!**
+
 - Frontend: http://localhost:5173
 - API Docs: http://localhost:8001/docs
 - Test Account: `suhasms839@gmail.com` / `pass`
@@ -335,6 +349,7 @@ Vector Search: Returns chunks about "housing materials"
 ### Sincra's Solution: Hybrid Retrieval
 
 **Step 1: Dual-Path Search**
+
 ```
 Query Input
     ├─ Vector Path: Semantic similarity (top-5 chunks)
@@ -345,6 +360,7 @@ Query Input
 ```
 
 **Step 2: Context Fusion**
+
 ```
 Vector Results: [Chunk_1, Chunk_2, Chunk_3, Chunk_4, Chunk_5]
 Graph Results:  [Entity_Sarah, Entity_PrismSquad, Relationship_leads]
@@ -355,6 +371,7 @@ LLM receives full context + entity relationships
 ```
 
 **Step 3: Cited Answer Generation**
+
 ```
 LLM synthesizes answer while maintaining:
 - Direct quotes from source documents
@@ -365,12 +382,12 @@ LLM synthesizes answer while maintaining:
 
 ### Why This Matters
 
-| Metric | Vector-Only | Hybrid (Sincra) |
-|--------|-------------|-----------------|
-| **Accuracy** | 72% | 91% |
-| **Context Relevance** | 68% | 89% |
-| **Citation Accuracy** | 65% | 94% |
-| **Latency** | 200ms | 350ms |
+| Metric                | Vector-Only | Hybrid (Sincra) |
+| --------------------- | ----------- | --------------- |
+| **Accuracy**          | 72%         | 91%             |
+| **Context Relevance** | 68%         | 89%             |
+| **Citation Accuracy** | 65%         | 94%             |
+| **Latency**           | 200ms       | 350ms           |
 
 ---
 
@@ -416,8 +433,10 @@ python scripts/debug/debug_retrieval_run.py
 ## 🎯 Engineering Highlights
 
 ### Challenge 1: Neo4j Connection Stability (Error 10054)
+
 **Problem:** Intermittent `10054` (connection reset) errors on large graph queries  
-**Solution:** 
+**Solution:**
+
 - Implemented connection pooling with exponential backoff
 - Custom driver configuration: `connection_timeout=30s`, `retry_count=3`
 - Health checks on connection acquisition
@@ -425,8 +444,10 @@ python scripts/debug/debug_retrieval_run.py
 **Code:** [app/infrastructure/db/neo4j_manager.py](app/infrastructure/db/neo4j_manager.py)
 
 ### Challenge 2: Cross-Platform ChromaDB Binding
+
 **Problem:** Rust-native ChromaDB bindings failed on Windows  
 **Solution:**
+
 - Fallback mechanism to SQLite-backed storage
 - Automatic persistence layer detection
 - Dynamic format conversion for vector data
@@ -434,8 +455,10 @@ python scripts/debug/debug_retrieval_run.py
 **Code:** [app/infrastructure/vectorstore/chroma_manager.py](app/infrastructure/vectorstore/chroma_manager.py)
 
 ### Challenge 3: Entity Extraction at Scale
+
 **Problem:** LLM-based extraction was too slow for large documents  
 **Solution:**
+
 - Implemented chunked extraction (max 3 chunks per request)
 - Local entity deduplication with embedding similarity (threshold: 0.85)
 - Graph-level community detection (Louvain algorithm)
@@ -463,22 +486,26 @@ python scripts/debug/debug_retrieval_run.py
 We welcome contributions from the community! Follow these steps:
 
 1. **Fork & Clone**
+
    ```bash
    git clone https://github.com/yourusername/Sincra.git
    cd Sincra
    ```
 
 2. **Create Feature Branch**
+
    ```bash
    git checkout -b feature/your-feature-name
    ```
 
 3. **Make Changes & Test**
+
    ```bash
    python -m pytest tests/ -v
    ```
 
 4. **Commit with Conventional Commits**
+
    ```bash
    git commit -m "feat: add hybrid retrieval optimization"
    ```
@@ -552,15 +579,16 @@ Sincra/
 
 ## 🐛 Troubleshooting
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| `Cannot connect to API` | Backend not running | Run `npm run dev` or `python app/api/server.py` |
-| `Vector search returns empty` | No documents uploaded | Upload a document via UI or API |
-| `Neo4j connection failed` | Neo4j service down | Check Neo4j Aura dashboard or start local instance |
-| `401 Unauthorized` | Invalid/expired token | Log in again to get fresh token |
-| `Port 8001 already in use` | Another service on port | `lsof -i :8001` (macOS/Linux) or check Task Manager (Windows) |
+| Issue                         | Cause                   | Solution                                                      |
+| ----------------------------- | ----------------------- | ------------------------------------------------------------- |
+| `Cannot connect to API`       | Backend not running     | Run `npm run dev` or `python app/api/server.py`               |
+| `Vector search returns empty` | No documents uploaded   | Upload a document via UI or API                               |
+| `Neo4j connection failed`     | Neo4j service down      | Check Neo4j Aura dashboard or start local instance            |
+| `401 Unauthorized`            | Invalid/expired token   | Log in again to get fresh token                               |
+| `Port 8001 already in use`    | Another service on port | `lsof -i :8001` (macOS/Linux) or check Task Manager (Windows) |
 
 **Debug Resources:**
+
 - Backend logs: Check terminal output from `npm run dev`
 - API Docs: http://localhost:8001/docs (interactive testing)
 - Database Inspector: `python scripts/debug/db_inspect.py`
@@ -575,11 +603,11 @@ Sincra is licensed under the **MIT License** - see [LICENSE](LICENSE) file for d
 
 ## 👤 Author & Contact
 
-**Suhash M S**  
+**Suhas M S**
+
 - 📧 Email: suhasms839@gmail.com
-- 🔗 LinkedIn: [linkedin.com/in/suhasms839](https://linkedin.com/in/suhasms839)
-- 🏫 Institution: [JSS STU (Mysore)](https://www.jssstu.ac.in/), CSE (6th Semester)
-- 💼 Targeting: Top-tier placements (NetApp, Microsoft, Google Cloud)
+- 🔗 LinkedIn: [linkedin.com/in/suhasms839](https://linkedin.com/in/mssuhas)
+- 🏫 Institution: [JSS STU (Mysore)](https://www.jssstu.ac.in/), CSE
 
 **GitHub:** https://github.com/suhasms839-bit/GraphRAG
 
@@ -590,21 +618,25 @@ Sincra is licensed under the **MIT License** - see [LICENSE](LICENSE) file for d
 This project demonstrates:
 
 ✅ **Software Engineering Principles:**
+
 - Clean Architecture (separation of concerns)
 - Design Patterns (Factory, Strategy, Observer)
 - SOLID principles compliance
 
 ✅ **Full-Stack Development:**
+
 - Backend: FastAPI, async I/O, database design
 - Frontend: React hooks, state management, responsive UI
 - DevOps: Docker, CI/CD ready
 
 ✅ **AI/ML Integration:**
+
 - RAG pipeline design & optimization
 - LLM orchestration & fallback strategies
 - Evaluation metrics (RAGAS, faithfulness scoring)
 
 ✅ **System Design:**
+
 - Scalable multi-user architecture
 - Hybrid retrieval (vector + graph)
 - Real-time async processing
@@ -626,6 +658,6 @@ This project demonstrates:
 
 **⭐ If you find this project useful, please consider giving it a star!**
 
-Made with ❤️ by Suhash M S | [MIT License](LICENSE)
+Made with ❤️ by Suhas M S | [MIT License](LICENSE)
 
 </div>

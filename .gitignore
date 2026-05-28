@@ -56,3 +56,5 @@ build/
 *.temp
 tmp_*
 .turbo/
+# Google OAuth client secret files
+client_secret_*.json
