@@ -131,8 +131,13 @@ def upsert_entities_and_links(user_id: int, docs: List[Dict[str, Any]], alias_ma
         # After upserting chunks & entities, generate community summaries and persist
         try:
             community_manager = GraphRAGCommunityManager()
-            # process_communities is async; run it synchronously here
-            summaries = asyncio.run(community_manager.process_communities(all_entities, all_relationships))
+            # process_communities is async; run it in a new event loop since this
+            # function is always called from a thread pool executor (not the main loop)
+            loop = asyncio.new_event_loop()
+            try:
+                summaries = loop.run_until_complete(community_manager.process_communities(all_entities, all_relationships))
+            finally:
+                loop.close()
 
             # Persist community summaries into Neo4j and into global Chroma
             try:

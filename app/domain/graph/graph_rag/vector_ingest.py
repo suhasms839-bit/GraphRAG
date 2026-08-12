@@ -2,7 +2,7 @@ import os
 import re
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
 from langchain_community.vectorstores import Chroma
@@ -44,7 +44,7 @@ class VectorIngestionPipeline:
         lines = chunk.split("\n")
         topic = lines[0][:100] if lines else "General"
         subtopic = "Intro" if "intro" in chunk.lower() else "Content"
-        return {"source": filename, "document_id": doc_id, "user_id": self.user_id, "chunk_id": str(uuid.uuid4()), "topic": topic, "subtopic": subtopic, "created_at": datetime.utcnow().isoformat()}
+        return {"source": filename, "document_id": doc_id, "user_id": self.user_id, "chunk_id": str(uuid.uuid4()), "topic": topic, "subtopic": subtopic, "created_at": datetime.now(timezone.utc).isoformat()}
 
     async def ingest(self, text: str, filename: str, doc_id: int):
         cleaned_text = self.clean_text(text)

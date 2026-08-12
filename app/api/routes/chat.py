@@ -13,6 +13,7 @@ from app.domain.learning.course_builder import CourseBuilder
 from app.infrastructure.vectorstore.manager import VectorStoreManager
 from app.domain.retrieval.hybrid_search import HybridRetriever
 from app.domain.agents.orchestrator import AgenticOrchestrator
+from app.domain.agents.mcp_context import get_gmail_context_if_needed
 import traceback
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -109,13 +110,22 @@ async def send_message(
         manager = VectorStoreManager(user_id=current_user.id)
         orchestrator = AgenticOrchestrator(manager)
 
-        enriched_question = request.question
+        gmail_context = await get_gmail_context_if_needed(request.question, user_id=str(current_user.id))
+        prompt_parts = []
         if history_context:
-            enriched_question = (
+            prompt_parts.append(
                 "Consider the following conversation history when answering the current question.\n\n"
-                f"History:\n{history_context}\n\n"
-                f"Current Question: {request.question}"
+                f"History:\n{history_context}"
             )
+        if gmail_context:
+            prompt_parts.append(
+                "Consider the following Gmail context when relevant.\n\n"
+                f"Gmail Context:\n{gmail_context}"
+            )
+
+        enriched_question = request.question
+        if prompt_parts:
+            enriched_question = "\n\n".join(prompt_parts + [f"Current Question: {request.question}"])
 
         # Check documents count for initial status
         user_documents = db.query(Document).filter(Document.user_id == current_user.id).all()

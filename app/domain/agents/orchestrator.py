@@ -34,9 +34,9 @@ class AgenticOrchestrator:
         logger.info(f"Retrieved docs count: {len(semantic_hits)}")
         
         if not semantic_hits:
-            # Fallback to general knowledge
-            answer = f"Based on general knowledge: {question} requires specific context from uploaded documents. Please upload relevant materials for a detailed answer."
-            base_output = format_final_output(answer, [], 0.1, "General Knowledge")
+            # No documents uploaded or nothing retrieved
+            answer = "No relevant content was found in your uploaded documents. Please upload a document first, then ask questions about its content."
+            base_output = format_final_output(answer, [], 0.0, "No documents")
             return {
                 **base_output,
                 "mode": retrieval_resp.get("mode", "fallback"),
@@ -47,34 +47,24 @@ class AgenticOrchestrator:
         # Continue with existing logic but with retrieved context
         context_text = "\n\n".join([f"Evidence: {h.get('content', '')}" for h in semantic_hits])
         
-        system_instruction = f"""You are a Technical Mentor and Knowledge Architect for students at JSS STU.
-Your goal is to transform the provided context into a precise, verifiable, and goal-aligned response.
+        system_instruction = f"""You are a document-based question answering assistant.
+Your ONLY job is to answer questions using the provided document context below.
 
-### Provided Context:
+### Provided Context (from uploaded documents):
 {context_text}
 
-### Operational Principles:
-1. **Structural Priority**: Prioritize key-value pairs (methods, authors, dates).
-2. **Entity Resolution**: Resolve different representations of the same entity (e.g., "The Frog" and "Most Important Task").
-3. **Boundary Integrity**: Respect document and chapter boundaries. Do not mix unrelated topics.
-4. **Metadata Scrubbing**: Strip technical artifacts (timestamps, chunk_id tags, raw headers).
+### STRICT Rules:
+1. Answer ONLY using information found in the Provided Context above.
+2. Do NOT use general knowledge or training data. If the answer is not in the context, say exactly: "The uploaded documents do not contain information about this topic."
+3. Quote or closely paraphrase specific text from the context. Add [S1], [S2] citation markers referencing the source document.
+4. Be precise and complete. Do not shorten or omit important details from the context.
+5. Return ONLY a valid JSON object — no extra text outside the JSON.
 
-### Response Framework:
-1. **Synthesis**: Clean, prose-style explanation based on the provided context.
-2. **Placement Insight**: Include a brief section on how this concept appears in placement interviews.
-3. **Citations**: Use [S1], [S2] markers at the end of factual claims.
-
-### Hard Rules:
-- If context is insufficient, say: "Based on general knowledge" then answer, clearly separating from document-based info.
-- NO mid-sentence breaks. Complete thoughts logically.
-- MANDATORY Schema: Return a JSON object following the StructuredAnswer model.
-
-### StructuredAnswer Model:
+### Output Schema (return EXACTLY this JSON structure):
 {{
-  "answer": "Prose-style synthesis with [S1] citations",
-  "key_points": ["Point 1", "Point 2"],
-  "placement_insight": "How this appears in interviews",
-  "citations": [{{ "id": "S1", "source": "filename.pdf", "page": 5 }}],
+  "answer": "Your answer here, based strictly on the provided context, with [S1] citation markers.",
+  "key_points": ["Key point 1 from the document", "Key point 2 from the document"],
+  "citations": [{{"id": "S1", "source": "filename", "page": 0}}],
   "confidence": 0.95
 }}"""
 
@@ -199,8 +189,9 @@ Your goal is to transform the provided context into a precise, verifiable, and g
                     break
         
         # 4. Ultimate Fallback (If loop finished/failed without structured_data)
+        fallback_content = " ".join([h.get('content', '')[:300] for h in semantic_hits[:3]])
         base_output = format_final_output(
-            f"Completed research on {question}. Most relevant excerpts: " + " ".join([h.get('content', '')[:150] for h in semantic_hits[:3]]),
+            f"Based on the uploaded documents: {fallback_content}",
             [],
             0.3,
             "Retrieved documents"

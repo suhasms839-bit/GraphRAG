@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     
     # Ollama Configuration
-    USE_OLLAMA: bool = os.getenv("USE_OLLAMA", "true").strip().lower() in {"1", "true", "yes", "y"}
+    USE_OLLAMA: bool = os.getenv("USE_OLLAMA", "false").strip().lower() in {"1", "true", "yes", "y"}
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.1")
     OLLAMA_TIMEOUT: int = int(os.getenv("OLLAMA_TIMEOUT", "120"))
@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     WEAK_CONTEXT_THRESHOLD: float = float(os.getenv("WEAK_CONTEXT_THRESHOLD", "0.4"))
     # LLM reranker controls
     RERANKER_ENABLED: bool = os.getenv("RERANKER_ENABLED", "true").strip().lower() in {"1", "true", "yes", "y"}
-    RE_RANKER_TIMEOUT: float = float(os.getenv("RE_RANKER_TIMEOUT", "0.5"))
+    RE_RANKER_TIMEOUT: float = float(os.getenv("RE_RANKER_TIMEOUT", "5.0"))
     # Graph seed scoring
     SEED_SCORE_THRESHOLD: float = float(os.getenv("SEED_SCORE_THRESHOLD", "0.6"))
     

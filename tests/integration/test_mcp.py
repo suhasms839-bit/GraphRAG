@@ -1,5 +1,6 @@
 import asyncio
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from app.domain.agents.mcp_context import get_gmail_context_if_needed
@@ -48,3 +49,34 @@ def test_gmail_context_ignores_non_mail_queries():
 
             assert context == ""
             async_mock.assert_not_awaited()
+
+
+def test_gmail_context_uses_per_user_token_env():
+    token_row = SimpleNamespace(
+        client_id="client-id",
+        client_secret="client-secret",
+        access_token="access-token",
+        refresh_token="refresh-token",
+        token_uri="https://oauth2.googleapis.com/token",
+        scopes="https://www.googleapis.com/auth/gmail.readonly",
+        user_id="42",
+        expiry=SimpleNamespace(isoformat=lambda: "2026-01-01T00:00:00+00:00"),
+    )
+    async_mock = AsyncMock(return_value="Inbox update")
+
+    class DummyDb:
+        def close(self):
+            return None
+
+    with patch("app.domain.agents.mcp_context.SessionLocal", return_value=DummyDb()):
+        with patch("app.domain.agents.mcp_context.get_active_user_mcp_token", return_value=token_row):
+            with patch("app.domain.agents.mcp_context.get_mcp_client") as mock_get_client:
+                mock_get_client.return_value.run = async_mock
+                with patch("app.core.config.settings.GMAIL_MCP_ENABLED", True):
+                    context = asyncio.run(
+                        get_gmail_context_if_needed("Any email from finance?", user_id="42")
+                    )
+
+    assert context == "Inbox update"
+    _, kwargs = async_mock.await_args
+    assert kwargs["env_overrides"]["GOOGLE_OAUTH_USER_ID"] == "42"

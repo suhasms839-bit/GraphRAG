@@ -7,10 +7,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import auth, documents, chat, system
 from app.api.routes import mcp as mcp_route
+from app.api.routes import mcp_auth
 from app.core.logging import logger
 
 from app.core.config import settings
-from app.core.database import engine
+from app.core.database import engine, Base
 try:
     from neo4j import GraphDatabase
 except Exception:
@@ -21,6 +22,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from uuid import uuid4
 import time
+
+# Create all database tables on startup
+Base.metadata.create_all(bind=engine)
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
@@ -109,6 +113,7 @@ app.include_router(documents.router)
 app.include_router(chat.router)
 app.include_router(system.router)
 app.include_router(mcp_route.router)
+app.include_router(mcp_auth.router)
 
 @app.get("/health")
 async def health_check():

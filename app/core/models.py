@@ -97,3 +97,16 @@ class Telemetry(Base):
     event_type = Column(String(100))  # e.g., 'ingest', 'retrieve', 'rerank'
     payload = Column(Text)  # JSON string
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+class UserMcpToken(Base):
+    __tablename__ = "user_mcp_tokens"
+
+    user_id = Column(String(64), primary_key=True, index=True)
+    access_token = Column(Text, nullable=False)
+    refresh_token = Column(Text, nullable=True)
+    token_uri = Column(Text, nullable=False)
+    client_id = Column(Text, nullable=False)
+    client_secret = Column(Text, nullable=False)
+    scopes = Column(Text, nullable=False)
+    expiry = Column(DateTime, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
