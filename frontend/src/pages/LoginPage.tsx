@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Mail, Lock, Loader2, AlertCircle, GraduationCap } from "lucide-react";
 import { motion } from "motion/react";
+import { getApiUrl } from "../config";
 
 interface LoginPageProps {
   onLoginSuccess: (token: string, userData: any) => void;
@@ -21,7 +22,7 @@ export default function LoginPage({ onLoginSuccess, onToggleSignup }: LoginPageP
     const normalizedEmail = email.trim().toLowerCase();
 
     try {
-      const response = await fetch("/api/auth/login", {
+      const response = await fetch(getApiUrl("/api/auth/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: normalizedEmail, password }),

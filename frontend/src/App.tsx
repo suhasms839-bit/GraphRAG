@@ -14,6 +14,7 @@ import { motion, AnimatePresence } from "motion/react";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import DashboardPage from "./pages/DashboardPage";
+import { getApiUrl } from "./config";
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<"login" | "signup" | "dashboard">("login");
@@ -30,7 +31,7 @@ export default function App() {
       }
 
       try {
-        const response = await fetch("/api/auth/me", {
+        const response = await fetch(getApiUrl("/api/auth/me"), {
           headers: { Authorization: `Bearer ${token}` },
         });
 

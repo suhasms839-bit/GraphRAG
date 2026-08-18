@@ -15,6 +15,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { getApiUrl } from "../config";
 
 interface Message {
   id: number;
@@ -72,7 +73,6 @@ interface DashboardPageProps {
 const SourceNode: React.FC<{ citation: Citation; index: number; detailedHits?: DetailedHit[] }> = ({ citation, index, detailedHits }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Find parent context from detailed hits if available
   const parentContext = citation.parent_context || 
     (detailedHits && detailedHits[index]?.parent_context) || 
     undefined;
@@ -170,19 +170,18 @@ const LogicBadge: React.FC<{ message: Message }> = ({ message }) => {
   );
 };
 
-// Helper function to parse message data from backend
 const parseMessage = (msg: any): Message => {
   return {
     id: msg.id,
     role: msg.role,
     content: msg.content,
-    citations: msg.citations ? JSON.parse(msg.citations) : [],
-    key_points: msg.key_points ? JSON.parse(msg.key_points) : [],
+    citations: msg.citations ? (typeof msg.citations === "string" ? JSON.parse(msg.citations) : msg.citations) : [],
+    key_points: msg.key_points ? (typeof msg.key_points === "string" ? JSON.parse(msg.key_points) : msg.key_points) : [],
     confidence: msg.confidence ? parseFloat(msg.confidence) : undefined,
     confidence_label: msg.confidence,
     mode: msg.mode as "strong" | "hybrid" | "fallback",
     graph_used: msg.graph_used,
-    detailed_hits: msg.detailed_hits ? JSON.parse(msg.detailed_hits) : []
+    detailed_hits: msg.detailed_hits ? (typeof msg.detailed_hits === "string" ? JSON.parse(msg.detailed_hits) : msg.detailed_hits) : []
   };
 };
 
@@ -227,17 +226,16 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
     onLogout();
   };
 
-  const authenticatedFetch = async (url: string, init: RequestInit = {}) => {
+  const authenticatedFetch = async (endpoint: string, init: RequestInit = {}) => {
     const headers = new Headers(init.headers || {});
     headers.set("Authorization", `Bearer ${token}`);
 
-    return fetch(url, {
+    return fetch(getApiUrl(endpoint), {
       ...init,
       headers,
     });
   };
 
-  // Load conversations on mount
   useEffect(() => {
     if (initializedRef.current) {
       return;
@@ -245,12 +243,10 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
     initializedRef.current = true;
     loadConversations();
     loadDocuments();
-    // initial fetch for graph status
     fetchGraphStatus();
   }, []);
 
   useEffect(() => {
-    // Poll graph status every 10 seconds
     const id = setInterval(() => {
       fetchGraphStatus();
     }, 10000);
@@ -285,7 +281,6 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
       }
       if (response.ok) {
         const data = await response.json();
-        // Parse messages in each conversation
         const parsedConversations = data.conversations.map((conv: any) => ({
           ...conv,
           messages: conv.messages.map(parseMessage)
@@ -342,7 +337,6 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
         const data = await response.json();
         setInput("");
         loadConversations();
-        // Refresh current conversation
         if (data.conversation_id) {
           const convResponse = await authenticatedFetch(`/api/chat/conversations/${data.conversation_id}`);
           if (convResponse.status === 401) {
@@ -351,7 +345,6 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
           }
           if (convResponse.ok) {
             const convData = await convResponse.json();
-            // Parse messages in the conversation
             const parsedConversation = {
               ...convData,
               messages: convData.messages.map(parseMessage)

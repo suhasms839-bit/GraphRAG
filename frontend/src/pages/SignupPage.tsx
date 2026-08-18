@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Mail, Lock, User, Building2, Loader2, AlertCircle, GraduationCap } from "lucide-react";
 import { motion } from "motion/react";
+import { getApiUrl } from "../config";
 
 interface SignupPageProps {
   onSignupSuccess: (token: string, userData: any) => void;
@@ -42,7 +43,7 @@ export default function SignupPage({ onSignupSuccess, onToggleLogin }: SignupPag
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/auth/signup", {
+      const response = await fetch(getApiUrl("/api/auth/signup"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

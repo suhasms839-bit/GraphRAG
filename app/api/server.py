@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import auth, documents, chat, system
 from app.api.routes import mcp as mcp_route
-from app.api.routes import mcp_auth
+#from app.api.routes import mcp_auth
 from app.core.logging import logger
 
 from app.core.config import settings
@@ -99,7 +99,7 @@ allowed_origins = _parse_cors_origins(os.getenv("CORS_ORIGINS"))
 # Add CORS middleware for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=["*"],  # For strict production, replace "*" with your Vercel/Frontend domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -113,7 +113,7 @@ app.include_router(documents.router)
 app.include_router(chat.router)
 app.include_router(system.router)
 app.include_router(mcp_route.router)
-app.include_router(mcp_auth.router)
+#app.include_router(mcp_auth.router)
 
 @app.get("/health")
 async def health_check():
