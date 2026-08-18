@@ -99,7 +99,7 @@ allowed_origins = _parse_cors_origins(os.getenv("CORS_ORIGINS"))
 # Add CORS middleware for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=["*"],  # For strict production, replace "*" with your Vercel/Frontend domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

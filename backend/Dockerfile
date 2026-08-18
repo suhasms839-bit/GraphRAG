@@ -22,4 +22,4 @@ ENV UPLOADS_DIR="/data/uploads"
 
 EXPOSE 8001
 
-CMD ["sh", "-c", "python scripts/migrations/upgrade_schema.py && uvicorn app.api.server:app --host 0.0.0.0 --port 8001"]
+CMD ["sh", "-c", "python scripts/migrations/upgrade_schema.py && uvicorn app.api.server:app --host 0.0.0.0 --port ${PORT:-8001}"]

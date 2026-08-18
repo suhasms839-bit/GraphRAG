@@ -1,0 +1,148 @@
+--- CONFIG FILE: C:\Users\HP\new\graphrag-learning-platform\backend\.env.example ---
+# GEMINI_API_KEY: Required for Gemini AI API calls.
+GEMINI_API_KEY="MY_GEMINI_API_KEY"
+
+# APP_URL: The URL where this applet is hosted.
+APP_URL="MY_APP_URL"
+
+# Vector Store
+VECTORSTORE_PERSIST_DIRECTORY="./chroma_db"
+UPLOADS_DIR="./uploads"
+
+# Neo4j
+NEO4J_URI="bolt://localhost:7687"
+NEO4J_USER="neo4j"
+NEO4J_PASSWORD=""
+
+# Database
+DATABASE_URL="sqlite:///./graphrag.db"
+
+# Optional MCP (Gmail MCP) configuration
+# Enable the MCP integration and provide the command to run. Example calls npx:
+GMAIL_MCP_ENABLED=false
+GMAIL_MCP_COMMAND=npx
+GMAIL_MCP_ARGS=-y,@shinzolabs/gmail-mcp
+GMAIL_MCP_TIMEOUT=60
+
+# Google OAuth2 client credentials (optional)
+# Either set client id/secret directly, or place the downloaded JSON and set the path.
+GOOGLE_OAUTH_CLIENT_ID=
+GOOGLE_OAUTH_CLIENT_SECRET=
+GOOGLE_OAUTH_CREDENTIALS_PATH=./client_secret_<your>.json
+GOOGLE_OAUTH_REDIRECT_URI=http://localhost:8080/
+
+--- CONFIG FILE: C:\Users\HP\new\graphrag-learning-platform\backend\Dockerfile ---
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install build deps for some Python wheels
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential gcc libpq-dev && rm -rf /var/lib/apt/lists/*
+
+# Copy and install Python requirements
+COPY backend/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Copy repository
+COPY . /app
+
+# Default environment values; override with docker-compose or env files
+ENV DATABASE_URL="sqlite:///./graphrag.db"
+ENV VECTORSTORE_PERSIST_DIRECTORY="/data/chroma_db"
+ENV UPLOADS_DIR="/data/uploads"
+
+EXPOSE 8001
+
+CMD ["sh", "-c", "python scripts/migrations/upgrade_schema.py && uvicorn app.api.server:app --host 0.0.0.0 --port 8001"]
+
+--- CONFIG FILE: C:\Users\HP\new\graphrag-learning-platform\backend\requirements.txt ---
+fastapi
+uvicorn
+pydantic
+pydantic-settings
+pydantic[email]
+psycopg2-binary
+sqlalchemy
+pyjwt
+passlib[bcrypt]
+python-multipart
+langchain-chroma
+langchain-huggingface
+langchain-core
+neo4j
+python-dotenv
+pytest
+pymupdf
+networkx
+ragas
+datasets
+pandas
+numpy
+# Optional: MCP / Gmail helper tool. Keep optional so runtime isn't required.
+# Example: an npm-based MCP can be invoked via `npx @shinzolabs/gmail-mcp`.
+cryptography
+
+--- CONFIG FILE: C:\Users\HP\new\graphrag-learning-platform\frontend\Dockerfile ---
+FROM node:18-alpine AS build
+
+WORKDIR /app
+
+# Copy frontend sources and install dependencies
+COPY frontend/package*.json frontend/
+RUN cd frontend && npm ci --silent
+COPY frontend/ frontend/
+
+# Build static assets
+RUN cd frontend && npm run build
+
+FROM nginx:stable-alpine
+
+# Copy built static files into nginx
+COPY --from=build /app/frontend/dist /usr/share/nginx/html
+
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+
+--- CONFIG FILE: C:\Users\HP\new\graphrag-learning-platform\package.json ---
+{
+  "name": "sincra",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx backend/server.ts",
+    "build": "cd frontend && vite build",
+    "preview": "cd frontend && vite preview",
+    "clean": "rm -rf dist",
+    "lint": "cd frontend && tsc --noEmit",
+    "start": "tsx backend/server.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^1.29.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "express-http-proxy": "^2.1.2",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsx": "^4.21.0",
+    "vite": "^6.2.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.4.21",
+    "tailwindcss": "^4.1.14",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}
+

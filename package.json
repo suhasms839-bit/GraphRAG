@@ -4,13 +4,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx backend/server.ts",
-    "build": "cd frontend && vite build",
-    "preview": "cd frontend && vite preview",
-    "clean": "rm -rf dist",
-    "lint": "cd frontend && tsc --noEmit",
-    "start": "tsx backend/server.ts"
-  },
+  "dev:frontend": "cd frontend && vite",
+  "dev:backend": "uvicorn app.api.server:app --host 0.0.0.0 --port 8001 --reload",
+  "build": "cd frontend && tsc --noEmit && vite build",
+  "preview": "cd frontend && vite preview",
+  "clean": "rm -rf frontend/dist"
+},
   "dependencies": {
     "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.14",
