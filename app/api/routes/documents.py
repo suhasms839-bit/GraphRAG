@@ -1,18 +1,16 @@
 import os
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Header
 from sqlalchemy.orm import Session
 import fitz
+
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.models import User, Document
 from app.core.schemas import DocumentResponse, DocumentListResponse
 from app.core.security import verify_token
 from app.core.logging import logger
-from app.infrastructure.vectorstore.manager import VectorStoreManager
 from app.domain.graph.graph_rag.vector_ingest import VectorIngestionPipeline
-from app.core.config import settings
-from app.core.guards import ingest_semaphore
-import asyncio
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -36,18 +34,8 @@ def _extract_text_for_indexing(file_path: str, extension: str) -> str:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             return f.read().strip()
 
-    # For unsupported formats, return empty text and keep file metadata.
     return ""
 
-def split_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
-    """Split text into chunks with overlap."""
-    words = text.split()
-    chunks = []
-    for i in range(0, len(words), chunk_size - overlap):
-        chunk = " ".join(words[i:i+chunk_size])
-        if chunk.strip():  # Only add non-empty chunks
-            chunks.append(chunk)
-    return chunks
 
 def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)):
     """Extract and verify JWT token from Authorization header"""
@@ -84,21 +72,20 @@ def get_current_user(authorization: str = Header(None), db: Session = Depends(ge
     
     return user
 
-@router.post("/upload")
+
+@router.post("/upload", response_model=DocumentResponse)
 async def upload_document(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Upload a document (PDF, TXT, etc.)"""
-    
     if not file.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Filename is required"
         )
     
-    # Validate file type (MIME + extension fallback for browser inconsistencies)
     allowed_types = {
         "application/pdf",
         "application/x-pdf",
@@ -117,27 +104,27 @@ async def upload_document(
             detail="File type not allowed. Allowed: PDF, TXT, CSV, DOC, DOCX"
         )
     
-    # Read file
     try:
         contents = await file.read()
         file_size = len(contents)
 
-        # Enforce upload size limit
         if file_size > settings.MAX_UPLOAD_SIZE_BYTES:
-            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=f"File exceeds max size of {settings.MAX_UPLOAD_SIZE_BYTES} bytes")
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File exceeds max size of {settings.MAX_UPLOAD_SIZE_BYTES} bytes"
+            )
         
-        # Create user-specific directory
+        # User-specific storage directory
         user_dir = os.path.join(UPLOAD_DIR, str(current_user.id))
         os.makedirs(user_dir, exist_ok=True)
         
-        # Save file
         file_name = f"{current_user.id}_{file.filename}"
         file_path = os.path.join(user_dir, file_name)
         
         with open(file_path, "wb") as f:
             f.write(contents)
 
-        # Create a plain-text sidecar for retrieval/indexing.
+        # Extract text for sidecar and vector ingestion
         extracted_text = ""
         try:
             extracted_text = _extract_text_for_indexing(file_path, extension)
@@ -147,15 +134,16 @@ async def upload_document(
                 with open(sidecar_path, "w", encoding="utf-8") as tf:
                     tf.write(extracted_text)
         except Exception as extraction_err:
-            logger.warning(f"Text extraction skipped for {file.filename}: {extraction_err}")
+            logger.warning(f"Text extraction failed for {file.filename}: {extraction_err}")
         
-        # Store document metadata in database
+        # Save record in SQL DB
+        mime = file.content_type or (f"application/{extension}" if extension else "application/octet-stream")
         document = Document(
             user_id=current_user.id,
             filename=file.filename,
             file_path=file_path,
             file_size=file_size,
-            mime_type=file.content_type or f"application/{extension}" or "application/octet-stream",
+            mime_type=mime,
             ingested=False,
             chunk_count=0,
             ingest_log=None
@@ -164,30 +152,16 @@ async def upload_document(
         db.add(document)
         db.commit()
         db.refresh(document)
-        logger.info(f"Document uploaded: {file.filename} by user {current_user.id}")
+        logger.info(f"Document saved to database: {file.filename} (ID: {document.id}) by user {current_user.id}")
 
-        # Trigger ingestion (best-effort) but gate concurrency
-        try:
-            pipeline = VectorIngestionPipeline()
-            # If ingestion is async-capable, run concurrently with semaphore
-            async def _ingest():
-                async with ingest_semaphore:
-                    await asyncio.to_thread(pipeline.ingest, document.id, current_user.id)
-
-            # Schedule background ingestion without blocking response
-            asyncio.create_task(_ingest())
-        except Exception as e:
-            logger.warning(f"Ingestion scheduled failed: {e}")
-
-        # Extract text and create chunks for vector embedding (v3.0 Ingestion Pipeline)
+        # Ingestion pipeline execution
         if extracted_text:
-            pipeline = VectorIngestionPipeline(user_id=current_user.id)
             try:
-                # v3 ingest returns IngestResult object
+                pipeline = VectorIngestionPipeline(user_id=current_user.id)
                 result = await pipeline.ingest(text=extracted_text, filename=file.filename, doc_id=document.id)
                 if result:
                     document.ingested = True
-                    document.chunk_count = result.chunks
+                    document.chunk_count = getattr(result, "chunks", 0)
                 else:
                     document.ingested = False
             except Exception as ex:
@@ -198,21 +172,17 @@ async def upload_document(
             db.commit()
             db.refresh(document)
 
-        # Ensure mime_type is a string to satisfy response schema
-        if not document.mime_type:
-            document.mime_type = f"application/{extension}" if extension else "application/octet-stream"
-            db.add(document)
-            db.commit()
-            db.refresh(document)
-
-        return DocumentResponse.from_orm(document)
+        return document
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error uploading document: {str(e)}")
+        logger.error(f"Error uploading document: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to upload document"
+            detail=f"Failed to upload document: {str(e)}"
         )
+
 
 @router.get("/list", response_model=DocumentListResponse)
 async def list_documents(
@@ -220,13 +190,12 @@ async def list_documents(
     db: Session = Depends(get_db)
 ):
     """List all documents for current user"""
-    
     documents = db.query(Document).filter(Document.user_id == current_user.id).all()
-    
     return DocumentListResponse(
         documents=[DocumentResponse.from_orm(doc) for doc in documents],
         total_count=len(documents)
     )
+
 
 @router.delete("/{document_id}")
 async def delete_document(
@@ -235,7 +204,6 @@ async def delete_document(
     db: Session = Depends(get_db)
 ):
     """Delete a document"""
-    
     document = db.query(Document).filter(
         (Document.id == document_id) & (Document.user_id == current_user.id)
     ).first()
@@ -246,17 +214,14 @@ async def delete_document(
             detail="Document not found"
         )
     
-    # Delete file from filesystem
     try:
         if os.path.exists(document.file_path):
             os.remove(document.file_path)
     except Exception as e:
         logger.error(f"Error deleting file: {str(e)}")
     
-    # Delete from database
     db.delete(document)
     db.commit()
-    
     logger.info(f"Document deleted: {document.id} by user {current_user.id}")
     
     return {"message": "Document deleted successfully"}
