@@ -360,7 +360,7 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
     }
   };
 
-  const uploadFiles = async (files: File[]) => {
+const uploadFiles = async (files: File[]) => {
     if (!files.length) {
       return;
     }
@@ -370,11 +370,13 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
 
     let successCount = 0;
     let failureCount = 0;
+    let serverErrorMessage = "";
 
     for (const file of files) {
       const extension = file.name.split(".").pop()?.toLowerCase() || "";
       if (!ALLOWED_EXTENSIONS.includes(extension)) {
         failureCount += 1;
+        serverErrorMessage = `Extension .${extension} is not supported. Allowed: PDF, TXT, CSV, DOC, DOCX.`;
         continue;
       }
 
@@ -395,10 +397,7 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
 
         if (response.status === 413) {
           failureCount += 1;
-          setUploadStatus({
-            type: "error",
-            message: "File is too large. Please upload a smaller file.",
-          });
+          serverErrorMessage = "File is too large. Please upload a smaller file.";
           continue;
         }
 
@@ -406,10 +405,13 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
           successCount += 1;
         } else {
           failureCount += 1;
+          const errorData = await response.json().catch(() => null);
+          serverErrorMessage = errorData?.detail || `Server error (${response.status}): ${response.statusText}`;
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error uploading file:", err);
         failureCount += 1;
+        serverErrorMessage = err?.message || "Network error while uploading";
       }
     }
 
@@ -423,12 +425,12 @@ export default function DashboardPage({ user, token, onLogout }: DashboardPagePr
     } else if (successCount > 0 && failureCount > 0) {
       setUploadStatus({
         type: "error",
-        message: `${successCount} uploaded, ${failureCount} failed. Allowed: PDF, TXT, CSV, DOC, DOCX.`,
+        message: `${successCount} uploaded, ${failureCount} failed. Reason: ${serverErrorMessage}`,
       });
     } else {
       setUploadStatus({
         type: "error",
-        message: "Upload failed. Only PDF, TXT, CSV, DOC, DOCX are supported.",
+        message: serverErrorMessage || "Upload failed. Please check backend logs.",
       });
     }
 
