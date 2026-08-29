@@ -9,8 +9,8 @@ pyjwt
 passlib[bcrypt]
 python-multipart
 langchain-chroma
-langchain-huggingface
 langchain-core
+langchain-google-genai
 neo4j
 python-dotenv
 pytest
@@ -21,4 +21,3 @@ datasets
 pandas
 numpy
 cryptography
-sentence-transformers
