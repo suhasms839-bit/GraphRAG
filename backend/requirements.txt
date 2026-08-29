@@ -10,7 +10,8 @@ passlib[bcrypt]
 python-multipart
 langchain-chroma
 langchain-core
-langchain-google-genai
+langchain-community
+fastembed
 neo4j
 python-dotenv
 pytest

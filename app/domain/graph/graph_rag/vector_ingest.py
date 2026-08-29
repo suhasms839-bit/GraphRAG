@@ -7,7 +7,7 @@ from typing import List, Dict, Any, Optional
 
 from langchain_chroma import Chroma
 from langchain_core.documents import Document as LangchainDocument
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.core.config import settings
@@ -30,10 +30,7 @@ class VectorIngestionPipeline:
         self.user_id = user_id
         base_dir = settings.CHROMA_PERSIST_DIR
         self.persist_directory = os.path.join(base_dir, f"user_{user_id}")
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/embedding-001",
-            google_api_key=settings.GEMINI_API_KEY
-        )
+        self.embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
         self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=200, add_start_index=True)
 
     def clean_text(self, text: str) -> str:
@@ -46,7 +43,15 @@ class VectorIngestionPipeline:
         lines = chunk.split("\n")
         topic = lines[0][:100] if lines else "General"
         subtopic = "Intro" if "intro" in chunk.lower() else "Content"
-        return {"source": filename, "document_id": doc_id, "user_id": self.user_id, "chunk_id": str(uuid.uuid4()), "topic": topic, "subtopic": subtopic, "created_at": datetime.now(timezone.utc).isoformat()}
+        return {
+            "source": filename,
+            "document_id": doc_id,
+            "user_id": self.user_id,
+            "chunk_id": str(uuid.uuid4()),
+            "topic": topic,
+            "subtopic": subtopic,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
 
     async def ingest(self, text: str, filename: str, doc_id: int):
         cleaned_text = self.clean_text(text)
@@ -56,26 +61,15 @@ class VectorIngestionPipeline:
             metadata = self.enrich_metadata(chunk, filename, doc_id)
             langchain_docs.append(LangchainDocument(page_content=chunk, metadata=metadata))
         
-        try:
-            db = SessionLocal()
-            user_docs = db.query(Document).filter(Document.user_id == self.user_id).all()
-            existing_chunks = sum([d.chunk_count or 0 for d in user_docs])
-            db.close()
-        except:
-            existing_chunks = 0
-
-        max_per_user = int(getattr(settings, "CHROMA_MAX_CHUNKS_PER_USER", 20000))
-        max_per_ingest = int(getattr(settings, "CHROMA_MAX_CHUNKS_PER_INGEST", 2000))
-        planned = len(langchain_docs)
-        if planned > max_per_ingest: 
-            raise ValueError("Ingest limit exceeded")
-        if existing_chunks + planned > max_per_user: 
-            raise ValueError("User quota exceeded")
         if not langchain_docs: 
             return None
 
         try:
-            vectorstore = Chroma.from_documents(documents=langchain_docs, embedding=self.embeddings, persist_directory=self.persist_directory)
+            vectorstore = Chroma.from_documents(
+                documents=langchain_docs,
+                embedding=self.embeddings,
+                persist_directory=self.persist_directory
+            )
             docs_for_graph = [{"content": d.page_content, "metadata": d.metadata} for d in langchain_docs]
             
             async def _bg_sync(docs, doc_id):

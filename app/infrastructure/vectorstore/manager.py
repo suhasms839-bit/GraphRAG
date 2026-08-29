@@ -3,7 +3,7 @@ import os
 from hashlib import sha1
 from typing import List, Dict, Optional
 from langchain_chroma import Chroma
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from app.core.config import settings
@@ -14,10 +14,8 @@ logger = logging.getLogger(__name__)
 
 class VectorStoreManager:
     def __init__(self, user_id: Optional[int] = None):
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/embedding-001",
-            google_api_key=settings.GEMINI_API_KEY
-        )
+        # FastEmbed uses BAAI/bge-small-en-v1.5 via ONNX Runtime (<20MB RAM, zero PyTorch footprint)
+        self.embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
         base_dir = settings.CHROMA_PERSIST_DIR
         self.user_id = user_id
         if user_id:
@@ -42,3 +40,14 @@ class VectorStoreManager:
         except Exception as e:
             logger.error(f"Failed to initialize Chroma vectorstore at {self.persist_directory}: {e}")
             return None
+
+    def similarity_search(self, query: str, k: int = 5, metadata_filter: Optional[Dict] = None) -> List[Document]:
+        store = self.get_vectorstore()
+        if store:
+            try:
+                results = store.similarity_search(query, k=k, filter=metadata_filter)
+                if results:
+                    return results
+            except Exception as e:
+                logger.error(f"Error during similarity_search on vectorstore: {e}")
+        return []
