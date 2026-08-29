@@ -50,11 +50,9 @@ def call_gemini_text(
 
     # Use the verified active models from your API account
     models_to_try = [
-        "gemini-2.5-flash",
         "gemini-flash-latest",
-        "gemini-2.5-flash-lite",
-        "gemini-flash-lite-latest",
-        "gemini-pro-latest"
+        "gemini-2.5-flash",
+        "gemini-flash-lite-latest"
     ]
 
     config = types.GenerateContentConfig(

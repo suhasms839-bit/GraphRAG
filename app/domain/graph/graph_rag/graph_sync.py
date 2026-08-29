@@ -24,18 +24,25 @@ def extract_candidate_entities(text: str) -> List[str]:
     if not text:
         return []
     candidates = set()
-    # Acronyms in parentheses
     for m in re.findall(r"\(([A-Z]{2,})\)", text):
         candidates.add(m)
-    # Capitalized terminology
     for m in re.findall(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b", text):
         candidates.add(m)
     for m in re.findall(r"\b([A-Z]{2,6})\b", text):
         candidates.add(m)
     return list(candidates)
 
+def ensure_graph_indexes(driver):
+    """Ensure unique constraints/indexes exist on Entity and Chunk for high-speed lookups."""
+    try:
+        with driver.session() as session:
+            session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (e:Entity) REQUIRE e.name IS UNIQUE")
+            session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (c:Chunk) REQUIRE c.chunk_id IS UNIQUE")
+    except Exception as e:
+        logger.debug(f"Index creation notice: {e}")
+
 def upsert_entities_and_links(user_id: int, docs: List[Dict[str, Any]], alias_map: Dict[str, str] = None):
-    """Sync extracted entities, chunks, and relationships into Neo4j AuraDB."""
+    """Sync extracted entities, chunks, and relationships into Neo4j AuraDB without cartesian products."""
     if alias_map is None:
         alias_map = DEFAULT_ALIAS_MAP
 
@@ -43,6 +50,8 @@ def upsert_entities_and_links(user_id: int, docs: List[Dict[str, Any]], alias_ma
     if not driver:
         logger.info("Neo4j driver unavailable; skipping graph sync.")
         return False
+
+    ensure_graph_indexes(driver)
 
     try:
         with driver.session() as session:
@@ -60,7 +69,7 @@ def upsert_entities_and_links(user_id: int, docs: List[Dict[str, Any]], alias_ma
                     source = meta.get("source", "Document")
                     document_id = meta.get("document_id", 0)
 
-                # 1. Merge Chunk Node
+                # 1. Upsert Chunk Node
                 try:
                     session.run(
                         """
@@ -72,7 +81,7 @@ def upsert_entities_and_links(user_id: int, docs: List[Dict[str, Any]], alias_ma
                 except Exception as e:
                     logger.warning(f"Failed to upsert Chunk node: {e}")
 
-                # 2. Extract Entities & Link with Standard Cypher (No APOC required)
+                # 2. Extract Entities & Link sequentially (No Cartesian Product)
                 candidates = extract_candidate_entities(text)
                 for cand in candidates:
                     canon = alias_map.get(cand.lower(), normalize_entity(cand))
@@ -81,11 +90,11 @@ def upsert_entities_and_links(user_id: int, docs: List[Dict[str, Any]], alias_ma
                         continue
 
                     try:
-                        # Pure Native Cypher
                         session.run(
                             """
                             MERGE (e:Entity {name: $canon})
-                            MERGE (c:Chunk {chunk_id: $chunk_id})
+                            WITH e
+                            MATCH (c:Chunk {chunk_id: $chunk_id})
                             MERGE (c)-[r:MENTIONS]->(e)
                             SET r.alias = $alias, r.count = coalesce(r.count, 0) + 1
                             """,
@@ -94,7 +103,7 @@ def upsert_entities_and_links(user_id: int, docs: List[Dict[str, Any]], alias_ma
                     except Exception as e:
                         logger.warning(f"Entity link failed for {canon}: {e}")
 
-                # 3. Create Co-occurrence relationships between entities in same chunk
+                # 3. Create Co-occurrence relationships between entities in same chunk without cartesian product
                 for i in range(len(candidates)):
                     for j in range(i + 1, len(candidates)):
                         s = normalize_entity(candidates[i])
@@ -103,7 +112,8 @@ def upsert_entities_and_links(user_id: int, docs: List[Dict[str, Any]], alias_ma
                             try:
                                 session.run(
                                     """
-                                    MATCH (e1:Entity {name: $s}), (e2:Entity {name: $t})
+                                    MATCH (e1:Entity {name: $s})
+                                    MATCH (e2:Entity {name: $t})
                                     MERGE (e1)-[r:RELATES_TO]-(e2)
                                     SET r.weight = coalesce(r.weight, 0) + 1
                                     """,
