@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class VectorStoreManager:
     def __init__(self, user_id: Optional[int] = None):
         self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="text-embedding-004",  # <--- Change from "models/text-embedding-004" to "text-embedding-004"
+            model="models/embedding-001",
             google_api_key=settings.GEMINI_API_KEY
         )
         base_dir = settings.CHROMA_PERSIST_DIR

@@ -31,7 +31,7 @@ class VectorIngestionPipeline:
         base_dir = settings.CHROMA_PERSIST_DIR
         self.persist_directory = os.path.join(base_dir, f"user_{user_id}")
         self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="text-embedding-004",  # <--- Change from "models/text-embedding-004" to "text-embedding-004"
+            model="models/embedding-001",
             google_api_key=settings.GEMINI_API_KEY
         )
         self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=200, add_start_index=True)
