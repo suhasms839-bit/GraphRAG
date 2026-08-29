@@ -74,8 +74,10 @@ class VectorIngestionPipeline:
             
             async def _bg_sync(docs, doc_id):
                 try:
+                    # Run CPU/blocking I/O operations in a separate executor thread
                     loop = asyncio.get_running_loop()
                     ok = await loop.run_in_executor(None, upsert_entities_and_links, self.user_id, docs)
+                    
                     from app.core.database import SessionLocal as BGSessionLocal
                     from app.core.models import Document as DBDocument
                     db = BGSessionLocal()
@@ -84,10 +86,12 @@ class VectorIngestionPipeline:
                         doc.graph_ready = True
                         db.commit()
                     db.close()
-                except Exception as e: 
-                    logger.exception(f"BG sync failed: {e}")
+                except Exception as e:
+                    logger.warning(f"Background Graph sync deferred: {e}")
             
+            # Fire and forget background graph builder
             asyncio.create_task(_bg_sync(docs_for_graph, doc_id))
+            
             return IngestResult(vectorstore, len(langchain_docs))
         except Exception as e:
             logger.error(f"Chroma failure: {e}")
