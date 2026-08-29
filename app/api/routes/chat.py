@@ -2,21 +2,21 @@ from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 import json
 import os
+import traceback
+
 from app.core.database import get_db
 from app.core.models import User, Conversation, Message, Document
 from app.core.schemas import ChatRequest, ChatResponse, ConversationResponse, ConversationListResponse
 from app.core.security import verify_token
 from app.core.logging import logger
-from app.domain.generation.answer_engine import answer_with_rag
 from app.domain.generation.llm_gateway import clean_response
-from app.domain.learning.course_builder import CourseBuilder
 from app.infrastructure.vectorstore.manager import VectorStoreManager
 from app.domain.retrieval.hybrid_search import HybridRetriever
 from app.domain.agents.orchestrator import AgenticOrchestrator
 from app.domain.agents.mcp_context import get_gmail_context_if_needed
-import traceback
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
 
 def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)):
     """Extract and verify JWT token from Authorization header"""
@@ -53,6 +53,7 @@ def get_current_user(authorization: str = Header(None), db: Session = Depends(ge
     
     return user
 
+
 @router.post("/message", response_model=ChatResponse)
 async def send_message(
     request: ChatRequest,
@@ -74,10 +75,9 @@ async def send_message(
                 detail="Conversation not found"
             )
     else:
-        # Create new conversation
         conversation = Conversation(
             user_id=current_user.id,
-            title=request.question[:50]  # Use first 50 chars as title
+            title=request.question[:50]
         )
         db.add(conversation)
         db.commit()
@@ -93,48 +93,43 @@ async def send_message(
     db.commit()
     db.refresh(user_message)
     
-    # Get conversation history for context
+    # Get conversation history
     conversation_history = db.query(Message).filter(
         Message.conversation_id == conversation.id
     ).order_by(Message.created_at).all()
     
-    # Build concise history context for follow-up questions.
+    # Format history context
     history_messages = conversation_history[:-1]
     history_context = "\n".join([
         f"{msg.role.upper()}: {msg.content}"
-        for msg in history_messages[-8:]
+        for msg in history_messages[-6:]
     ])
 
-    # FIX 5: Use AgenticOrchestrator instead of direct answer_with_rag
     try:
         manager = VectorStoreManager(user_id=current_user.id)
         orchestrator = AgenticOrchestrator(manager)
 
+        # Retrieve any external tool context (e.g. Gmail)
         gmail_context = await get_gmail_context_if_needed(request.question, user_id=str(current_user.id))
-        prompt_parts = []
-        if history_context:
-            prompt_parts.append(
-                "Consider the following conversation history when answering the current question.\n\n"
-                f"History:\n{history_context}"
-            )
-        if gmail_context:
-            prompt_parts.append(
-                "Consider the following Gmail context when relevant.\n\n"
-                f"Gmail Context:\n{gmail_context}"
-            )
 
-        enriched_question = request.question
-        if prompt_parts:
-            enriched_question = "\n\n".join(prompt_parts + [f"Current Question: {request.question}"])
+        # Check if orchestrator supports context kwargs, or pass clean question
+        clean_user_question = request.question.strip()
 
-        # Check documents count for initial status
-        user_documents = db.query(Document).filter(Document.user_id == current_user.id).all()
-        
-        # Execute Agentic RAG
-        result = await orchestrator.run(
-            question=enriched_question,
-            topic_title=request.topic or "General"
-        )
+        # Run orchestrator with the clean question for vector search
+        try:
+            # First attempt: passing history_context to supported orchestrator signature
+            result = await orchestrator.run(
+                question=clean_user_question,
+                topic_title=request.topic or "General",
+                history_context=history_context,
+                gmail_context=gmail_context
+            )
+        except TypeError:
+            # Fallback if orchestrator.run only accepts (question, topic_title)
+            result = await orchestrator.run(
+                question=clean_user_question,
+                topic_title=request.topic or "General"
+            )
 
         # Process the agentic result
         answer = result.get("answer", "I couldn't generate a proper response.")
@@ -143,10 +138,9 @@ async def send_message(
         confidence_rate = result.get("confidence", 0.5)
         confidence_label = "High" if confidence_rate >= 0.75 else ("Medium" if confidence_rate >= 0.5 else "Low")
         
-        # Clean and trim the assistant answer to remove conversation history and raw context
+        # Clean and format response
         cleaned_answer = clean_response(answer)
 
-        # Determine source type for metadata (do not inject into answer body)
         unique_sources = set([c.get("source", "Unknown") for c in citations])
         source_type = f"Retrieved documents: {', '.join(list(unique_sources))}" if unique_sources else "General Knowledge"
 
@@ -164,7 +158,7 @@ async def send_message(
             detailed_hits=result.get("detailed_hits", [])
         )
 
-        # Store assistant message in DB (store only cleaned answer)
+        # Store assistant message in DB
         bot_message = Message(
             conversation_id=conversation.id,
             role="assistant",
@@ -181,7 +175,6 @@ async def send_message(
         return chat_response
 
     except Exception as e:
-        # Log full traceback and return structured error to frontend
         tb = traceback.format_exc()
         logger.error(f"Chat generation failed: {e}\n{tb}")
         raise HTTPException(
@@ -198,7 +191,6 @@ async def debug_retrieval(q: str, current_user: User = Depends(get_current_user)
         retriever = HybridRetriever(manager)
         resp = await retriever.retrieve(q, topic_title="Debug", k=5)
 
-        # Build debug payload
         detailed = resp.get("detailed_hits", [])
         scores = resp.get("scores", [])
         hits = resp.get("hits", [])
@@ -218,13 +210,13 @@ async def debug_retrieval(q: str, current_user: User = Depends(get_current_user)
         logger.error(f"Debug retrieval failed: {e}\n{tb}")
         raise HTTPException(status_code=500, detail="Debug retrieval failed; check server logs.")
 
+
 @router.get("/conversations", response_model=ConversationListResponse)
 async def list_conversations(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """List all conversations for current user"""
-    
     conversations = db.query(Conversation).filter(
         Conversation.user_id == current_user.id
     ).order_by(Conversation.updated_at.desc()).all()
@@ -234,6 +226,7 @@ async def list_conversations(
         total_count=len(conversations)
     )
 
+
 @router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
 async def get_conversation(
     conversation_id: int,
@@ -241,7 +234,6 @@ async def get_conversation(
     db: Session = Depends(get_db)
 ):
     """Get a specific conversation with all messages"""
-    
     conversation = db.query(Conversation).filter(
         (Conversation.id == conversation_id) &
         (Conversation.user_id == current_user.id)
@@ -255,6 +247,7 @@ async def get_conversation(
     
     return ConversationResponse.from_orm(conversation)
 
+
 @router.delete("/conversations/{conversation_id}")
 async def delete_conversation(
     conversation_id: int,
@@ -262,7 +255,6 @@ async def delete_conversation(
     db: Session = Depends(get_db)
 ):
     """Delete a conversation"""
-    
     conversation = db.query(Conversation).filter(
         (Conversation.id == conversation_id) &
         (Conversation.user_id == current_user.id)
@@ -276,7 +268,6 @@ async def delete_conversation(
     
     db.delete(conversation)
     db.commit()
-    
     logger.info(f"Conversation deleted: {conversation_id} by user {current_user.id}")
     
     return {"message": "Conversation deleted successfully"}
