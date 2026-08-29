@@ -29,7 +29,7 @@ class IngestResult:
 class VectorIngestionPipeline:
     def __init__(self, user_id: int):
         self.user_id = user_id
-        base_dir = settings.CHROMA_PERSIST_DIR
+        base_dir = settings.CHROMA_PERSIST_DIR or "./chroma_db"
         self.persist_directory = os.path.abspath(os.path.join(base_dir, f"user_{user_id}"))
         os.makedirs(self.persist_directory, exist_ok=True)
         self.embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
@@ -67,17 +67,17 @@ class VectorIngestionPipeline:
             return None
 
         try:
-            # Explicit PersistentClient prevents tenant/RustBindingsAPI mismatches
-            client = chromadb.PersistentClient(path=self.persist_directory)
+            client = chromadb.PersistentClient(
+                path=self.persist_directory,
+                settings=chromadb.config.Settings(anonymized_telemetry=False, allow_reset=True)
+            )
             vectorstore = Chroma(
                 client=client,
                 collection_name="langchain",
                 embedding_function=self.embeddings,
             )
-            
-            # Add documents
             vectorstore.add_documents(documents=langchain_docs)
-            logger.info(f"Successfully indexed {len(langchain_docs)} chunks into ChromaDB at {self.persist_directory}")
+            logger.info(f"Indexed {len(langchain_docs)} chunks into ChromaDB at {self.persist_directory}")
 
             docs_for_graph = [{"content": d.page_content, "metadata": d.metadata} for d in langchain_docs]
             
@@ -93,7 +93,7 @@ class VectorIngestionPipeline:
                         doc.graph_ready = True
                         db.commit()
                     db.close()
-                except Exception as e: 
+                except Exception as e:
                     logger.warning(f"Background Graph sync deferred: {e}")
             
             asyncio.create_task(_bg_sync(docs_for_graph, doc_id))

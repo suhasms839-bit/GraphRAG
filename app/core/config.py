@@ -10,13 +10,16 @@ class Settings(BaseSettings):
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./graphrag.db")
     
     # Vector Store
-    CHROMA_PERSIST_DIR: str = os.getenv("VECTORSTORE_PERSIST_DIRECTORY", "./chroma_db")
+    # Ensure VECTORSTORE_PERSIST_DIRECTORY falls back to a relative folder if /data doesn't exist
+    VECTORSTORE_PERSIST_DIRECTORY: str = os.getenv("VECTORSTORE_PERSIST_DIRECTORY", "./chroma_db")
+    CHROMA_PERSIST_DIR: str = os.path.abspath(VECTORSTORE_PERSIST_DIRECTORY)
+
     UPLOADS_DIR: str = os.getenv("UPLOADS_DIR", "./uploads")
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     
     # LLM
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
     
     # Ollama Configuration
     USE_OLLAMA: bool = os.getenv("USE_OLLAMA", "false").strip().lower() in {"1", "true", "yes", "y"}
@@ -28,17 +31,16 @@ class Settings(BaseSettings):
     STRONG_CONTEXT_THRESHOLD: float = float(os.getenv("STRONG_CONTEXT_THRESHOLD", "0.7"))
     WEAK_CONTEXT_THRESHOLD: float = float(os.getenv("WEAK_CONTEXT_THRESHOLD", "0.4"))
     # LLM reranker controls
-    RERANKER_ENABLED: bool = os.getenv("RERANKER_ENABLED", "true").strip().lower() in {"1", "true", "yes", "y"}
-    RE_RANKER_TIMEOUT: float = float(os.getenv("RE_RANKER_TIMEOUT", "5.0"))
+    RERANKER_ENABLED: bool = True
+    RE_RANKER_TIMEOUT: float = 3.5  # Realistic timeout for LLM/Cross-Encoder evaluation
     # Graph seed scoring
     SEED_SCORE_THRESHOLD: float = float(os.getenv("SEED_SCORE_THRESHOLD", "0.6"))
     
     # Neo4j
     NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-    NEO4J_USER: str = os.getenv("NEO4J_USER", "neo4j")
+    NEO4J_USER: str = os.getenv("NEO4J_USER") or os.getenv("NEO4J_USERNAME") or "neo4j"
     NEO4J_PASSWORD: str = os.getenv("NEO4J_PASSWORD", "")
-    # Optional additional Neo4j fields
-    NEO4J_DATABASE: str = os.getenv("NEO4J_DATABASE", "")
+    NEO4J_DATABASE: str = os.getenv("NEO4J_DATABASE", "neo4j")
     # Wait before first Neo4j connection attempt (seconds)
     AURA_WAIT_SECONDS: int = int(os.getenv("AURA_WAIT_SECONDS", "60"))
     # Graph path traversal limits
