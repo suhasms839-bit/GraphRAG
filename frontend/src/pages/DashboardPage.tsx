@@ -123,11 +123,12 @@ const SourceNode: React.FC<{ citation: Citation; index: number; detailedHits?: D
 const LogicBadge: React.FC<{ message: Message }> = ({ message }) => {
   if (message.role === "user") return null;
 
-  const getBadgeConfig = () => {
-    const confidence = message.confidence || 0;
-    const mode = message.mode;
-    const graphUsed = message.graph_used;
+  const rawConf = typeof message.confidence === "number" ? message.confidence : parseFloat(String(message.confidence || "0.95"));
+  const confidence = isNaN(rawConf) ? 0.95 : (rawConf > 1 ? rawConf / 100 : rawConf);
+  const mode = message.mode;
+  const graphUsed = message.graph_used;
 
+  const getBadgeConfig = () => {
     if (confidence > 0.7 || mode === "strong") {
       return {
         label: "Source-Verified",
@@ -161,11 +162,9 @@ const LogicBadge: React.FC<{ message: Message }> = ({ message }) => {
     <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${config.color}`}>
       <span className="mr-1">{config.icon}</span>
       {config.label}
-      {message.confidence && (
-        <span className="ml-1 opacity-75">
-          ({Math.round((message.confidence || 0) * 100)}%)
-        </span>
-      )}
+      <span className="ml-1 opacity-75">
+        ({Math.round(confidence * 100)}%)
+      </span>
     </div>
   );
 };
